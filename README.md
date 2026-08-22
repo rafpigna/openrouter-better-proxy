@@ -27,7 +27,12 @@ OpenRouter's default load-balancing has several issues when used for cost-sensit
 
 4. **Dynamic pricing.** DeepSeek introduced peak/off-peak pricing (prices double during peak hours). Some providers offer temporary discounts that expire without warning. OpenRouter won't switch providers if cache already exists, even when the price difference makes switching worthwhile.
 
-The proxy solves all four by making routing decisions locally, with full visibility of current prices and session state.
+Openrouter provides "Presets" that can be configured in the Openrouter dashboard to select providers order or pinning to one/more providers, specify a max price and other things, but some client doesnt accept the prest as model name, and anyway presets doesn't protect you from price changes, peak/off-peak prices, discounts ending without notice, cache loss caused by previous provider not responding immediately. 
+
+The **Openrouter Better Proxy** solves all issues by making routing decisions locally, with full visibility of current prices and session state, always working on best quality for best prices, also if it has to change provider losing the cache if this is cheaper than staying with the same provider that has reaised it's prices or ended a discount.
+
+**PLEASE NOTE:**
+The **Openrouter Better Proxy** was designed to work specifically with Hermes Agent by Nous Research, but it's compatible with any client that sends calls to any OpenAI-compatible provider. Using it with other clients has one pitfall only: the proxy doesn't know how your client exposes a session_id or any other variable that asks Openrouter to cache the prompt, so you client may not cache between turns, in this case you will have to investigate further on how to keep the cache/provider pin. As soon as you have identified how your client exposes the session_id or any other data that can pin the caching, I will be very happy to merge it in the actual code. Please open a Feature Request (or a full PR) to ask for this, providing as much info you can, since I cannot test all clients and coding harnesess out there. 
 
 ---
 
@@ -46,7 +51,9 @@ The proxy solves all four by making routing decisions locally, with full visibil
 
 The proxy is designed to run on a always-on machine — a VM, LXC container, or a machine that stays on alongside Hermes. It uses minimal resources (well under 100 MB RAM at steady state).
 
-### For Hermes (client)
+> **Proxmox LXC note:** Unprivileged containers require `nesting=1` feature to avoid issues and pitfall. I strongly suggest to enable nesting on your unprivileged LXC if you go for it.
+
+### For Hermes Agent (client)
 
 - Hermes Agent v0.20+ installed on any machine that can reach the proxy over the network.
 
@@ -61,7 +68,7 @@ Choose one of the following deployment options:
 #### Option A: Clone + Python install (Linux)
 
 ```bash
-# Update and installa base prerequisites
+# Update and install base prerequisites
 apt update && apt upgrade -y
 apt install -y python3 python3-pip python3-venv curl git
 
@@ -81,13 +88,17 @@ pip install -r requirements.txt
 cp .env.example .env
 cp routing_config.yaml .
 
+# Create logs and data directories (auto-created by code on startup, but you can create them manually)
+mkdir -p logs data
+
 # Edit .env and add your OpenRouter API key
 nano .env
 # Add: OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
 
-# Edit routing_config.yaml if needed
+# Edit routing_config.yaml if needed 
 nano routing_config.yaml
 ```
+Make sure port 8787 is free on your enviroment. You can change port or host in the config. 
 
 #### Option B: Docker (coming soon)
 
@@ -113,7 +124,7 @@ source venv/bin/activate
 python main.py
 ```
 
-The server will start on `http://0.0.0.0:8787` by default.
+The server will start on `http://0.0.0.0:8787` by default. You can change port/host in the config.
 
 #### Systemd service (production)
 
@@ -130,20 +141,26 @@ sudo systemctl start openrouter-better-proxy
 sudo systemctl status openrouter-better-proxy
 ```
 
+> **Note:** The provided service file is minimal and works on most systems and unprivileged containers. If you need additional security hardening you will have to change the file accordingly to your needs.
+
 ### Step 4: Install the Hermes plugin
 
-The proxy is a drop-in replacement for OpenRouter. To use it with Hermes, install the custom plugin.
+The proxy is a drop-in replacement for OpenRouter. 
+To use it with Hermes, install the custom plugin.
 
-#### On Linux/macOS
+#### Script installation
+The script will install the plugin in your default (global) hermes profile. This is suggested because in this way, at any new profile that you will create, the pluign will be automatically copied in the new profile (but you can disable/remove it, if you want).
+Installing the pluign does not disable the built-in OpenRouter provider. You must still explicitly set `provider: openrouter-better-proxy` in your Hermes `config.yaml` to use the proxy, or select it in the Desktop appa in the providers settings.
+If you want to use the proxy only for a specific profile, install it manually and per-profile instead. All instructions are provided below also for this case.
 
+**-- On Linux/macOS --**
 ```bash
 # From the repository root
 chmod +x scripts/hermes-install-plugin.sh
 ./scripts/hermes-install-plugin.sh http://192.168.1.251:8787/v1
 ```
 
-#### On Windows
-
+**-- On Windows --**
 ```powershell
 # From the repository root
 .\scripts\hermes-install-plugin.ps1 -ProxyUrl "http://192.168.1.251:8787/v1"
@@ -155,23 +172,31 @@ The plugin can be installed globally (default profile) or per-profile.
 
 **Global installation (recommended)** — installs the plugin for all Hermes profiles:
 
+**-- On Linux/macOS --**
 ```bash
-# Linux/macOS
 mkdir -p ~/.hermes/plugins/model-providers/openrouter-better-proxy
 cp -r hermes-plugin/openrouter-better-proxy/* ~/.hermes/plugins/model-providers/openrouter-better-proxy/
+```
 
-# Windows (PowerShell, run as your user — no sudo needed)
+**-- On Windows --** 
+PowerShell, run as your user — no `Run as Administrator` needed
+```powershell
 New-Item -ItemType Directory -Path "$env:LOCALAPPDATA\hermes\plugins\model-providers\openrouter-better-proxy" -Force
 Copy-Item -Path "hermes-plugin\openrouter-better-proxy\*" -Destination "$env:LOCALAPPDATA\hermes\plugins\model-providers\openrouter-better-proxy" -Force
 ```
 
-**Per-profile installation** — installs the plugin only for a specific Hermes profile. Replace `<profile>` with your profile name (e.g., `test-proxy`):
+**Per-profile installation** — installs the plugin only for a specific Hermes profile. 
+The profile has to be already created before copying the plugin files. 
+Replace `<profile>` with your profile name/folder.
 
+**-- On Linux/macOS --**
 ```bash
-# Linux/macOS
 mkdir -p ~/.hermes/profiles/<profile>/plugins/model-providers/openrouter-better-proxy
 cp -r hermes-plugin/openrouter-better-proxy/* ~/.hermes/profiles/<profile>/plugins/model-providers/openrouter-better-proxy/
+```
 
+**-- On Windows --** 
+```powershell
 # Windows (PowerShell)
 New-Item -ItemType Directory -Path "$env:LOCALAPPDATA\hermes\profiles\<profile>\plugins\model-providers\openrouter-better-proxy" -Force
 Copy-Item -Path "hermes-plugin\openrouter-better-proxy\*" -Destination "$env:LOCALAPPDATA\hermes\profiles\<profile>\plugins\model-providers\openrouter-better-proxy" -Force
@@ -262,6 +287,12 @@ O = output per turn (out_per_turn_estimate)
 - `N* < 1`: switch immediately
 - `N*` small (1–5): depends on remaining turns + hysteresis
 
+> PLEASE NOTE: Since it't impossible to estimate how many turns your session will last, the formula is always a rough estimation that may not suit your usage scenario.
+> If during the usage you notice too much aggressive migrations (or too conservative) try to change the `hysteresis_mult` increasing it
+> if migrations are too aggressive, or decreasing if they're too conservative.
+> See [Price Migration](#price-migration) for further details.
+
+
 #### Refresh settings
 
 Controls how often the proxy fetches updated pricing from OpenRouter.
@@ -326,6 +357,22 @@ response = client.chat.completions.create(
     stream=True,
     session_id="my-conversation-123",  # Same ID = same provider = cached prefill
 )
+```
+
+### Important: OpenRouter Presets Not Supported
+
+The proxy does **not** support OpenRouter preset model IDs (e.g., `deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash`).
+
+**Why:** Presets are OpenRouter's abstraction for model variants. The proxy's routing logic operates on exact model IDs and would create a double-routing layer if presets were supported — defeating the purpose of having a local proxy.
+
+**What the proxy does instead:** The proxy provides all the benefits a preset offers (quantization tier selection, provider stickiness, price optimization) with far more flexibility through `routing_config.yaml`.
+
+**Configuration:** Always use the base model ID without preset suffix:
+```yaml
+model:
+  default: deepseek/deepseek-v4-flash-0731  # ✅ Correct
+  # default: deepseek/deepseek-v4-flash-0731@preset/preset-name  # ❌ Not supported
+  provider: openrouter-better-proxy
 ```
 
 ### Direct API usage
@@ -427,6 +474,19 @@ The `/status` endpoint returns detailed routing state:
 - Check `/status` to see if any endpoints are cached
 - Verify your OpenRouter API key has access to the model
 
+#### First request fails with "No valid provider found"
+
+This could be normale in some deployment due to slow network startup: the proxy hasn't fetched endpoint prices yet because cant reach the network.
+The proxy has a slight delay before fetching the data after the first startup, but it still can fail in some cases.
+
+**Fix: refresh the data manually. Example:**
+```bash
+curl -X POST http://localhost:8787/refresh
+```
+> Change host:port accordingly to your installation.
+This fetches the current provider list and prices from OpenRouter. After this, requests will route correctly.
+The proxy will auto-refresh prices based on the schedule in `routing_config.yaml` (default: every 30 minutes, plus explicit times).
+
 #### Provider always in cooldown
 
 - Check logs for repeated errors from a provider
@@ -439,7 +499,7 @@ The `/status` endpoint returns detailed routing state:
 - Check `/status` to verify the session is mapped to a provider
 - If the provider enters cooldown, the session stickiness is released and a new provider is selected
 
-#### Migration not triggering
+#### Price Migration not triggering
 
 - Check `/status` for migration events in `last_events`
 - Verify `migration.enabled` is `true`
@@ -500,7 +560,9 @@ No. The OpenRouter API key is read from `.env` at startup and kept in memory. It
 
 ### What happens if the proxy crashes?
 
-All state is in-memory. On restart, the proxy:
+The request sent by your client (Hermes or any other client) will reply with a clear error.
+Anyway, when the service will be restarted, all will automatically works since aAll state is in-memory. 
+On restart, the proxy:
 - Reloads `routing_config.yaml` and `.env`
 - Restores endpoint cache from disk (if available)
 - Starts with empty session and backoff state
@@ -509,6 +571,10 @@ All state is in-memory. On restart, the proxy:
 ### Can I use the proxy without Hermes?
 
 Yes. The proxy is a standard OpenAI-compatible server. Any client that speaks the OpenAI API format can use it.
+Only caveat is about session_id and cache stickyness: if you client does not pass a "session_id", you could lost cache at each turn.
+Please check logs and openrouter logs to confirm your caching is working.
+If you want support for caching with your client, open a feature request (or a full PR) and provide details on how your client
+wroks with genuine OpenRouter calls or plugins.
 
 ### Does the proxy support non-streaming requests?
 
@@ -526,6 +592,7 @@ Yes. Add a new section under `models:` in `routing_config.yaml`. Each model is c
 
 If you installed the proxy by cloning the repository, update both the source code and dependencies:
 
+**-- Updating the proxy --**
 ```bash
 cd /path/to/openrouter-better-proxy   # your clone directory
 git pull origin main                    # or your current branch
@@ -534,27 +601,33 @@ pip install -r requirements.txt --upgrade
 sudo systemctl restart openrouter-better-proxy
 ```
 
+**-- Updating the plugin --**
 If you installed the Hermes plugin manually, re-copy the plugin files after pulling the latest repository:
 
 ```bash
 # Linux/macOS
-cp -r hermes-plugin/openrouter-better-proxy/* ~/.hermes/plugins/model-providers/openrouter-better-proxy/
+cp -r hermes-plugin/openrouter-better-proxy/*.py ~/.hermes/plugins/model-providers/openrouter-better-proxy/
 
 # Windows (PowerShell)
-Copy-Item -Path "hermes-plugin\openrouter-better-proxy\*" -Destination "$env:LOCALAPPDATA\hermes\plugins\model-providers\openrouter-better-proxy" -Force
+Copy-Item -Path "hermes-plugin\openrouter-better-proxy\*.py" -Destination "$env:LOCALAPPDATA\hermes\plugins\model-providers\openrouter-better-proxy" -Force
 ```
 
-### Where are cache files stored?
+### Where are endpoint's cache files stored?
 
 Endpoint price caches are stored in `data/or_endpoints_<model>.json` (relative to the proxy working directory). Price snapshots for diff detection are stored in `data/price_snapshot_<model>.json`.
 
 ---
 
 ## License
+This project has a double licence to prevent commercial exploitation without authorization.
 
-This project is licensed under AGPL-3.0. See [LICENSE](LICENSE) for details.
+The project is licensed under AGPL-3.0 for personal/non commercial use. 
+It's tottall open and free for personal, self-hosting and all usage cases that will not make you earn money thanks to it.
+See [LICENSE](LICENSE) for details.
 
-For commercial licensing, see [LICENSE-COMMERCIAL](LICENSE-COMMERCIAL).
+For any use that let you earn money thanks to this project or part of it, you have to pay a commercial licence.
+See [LICENSE-COMMERCIAL](LICENSE-COMMERCIAL) for details and instruction on how to request the licence.
+
 
 ---
 
