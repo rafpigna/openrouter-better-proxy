@@ -61,6 +61,10 @@ Choose one of the following deployment options:
 #### Option A: Clone + Python install (Linux)
 
 ```bash
+# Update and installa base prerequisites
+apt update && apt upgrade -y
+apt install -y python3 python3-pip python3-venv curl git
+
 # Clone the repository
 cd /opt
 git clone https://github.com/rafpigna/openrouter-better-proxy.git
