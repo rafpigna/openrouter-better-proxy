@@ -1,0 +1,39 @@
+# OpenRouter Better Proxy — Configuration Example
+
+server:
+  host: "0.0.0.0"
+  port: 8787
+
+# Models managed: each section defines a model.
+models:
+  "deepseek/deepseek-v4-flash-0731":
+    quantizations: ["fp8", "fp4"]   # priority order (tiered)
+    providers: ["deepseek", "deepinfra", "streamlake", "gmicloud"]  # priority order
+    max_price:
+      input: 0.10
+      completion: 0.25
+      cache: 0.05
+
+# Global sections (apply to all models).
+migration:
+  enabled: true
+  hysteresis_mult: 3.0
+  est_turns_per_session: 50
+  r_cache_estimate: 300000
+  out_per_turn_estimate: 40000
+
+refresh:
+  interval_minutes: 30
+  price_change_threshold: 0.01
+  times:
+    - "10:00"
+    - "10:05"
+    - "10:10"
+    - "16:00"
+    - {from: "18:00", to: "22:00", step: "05m"}
+
+health:
+  initial_cooldown_seconds: 300
+  consecutive_threshold: 3
+  escalation_seconds: [3600, 43200]
+  max_cooldown_seconds: 43200

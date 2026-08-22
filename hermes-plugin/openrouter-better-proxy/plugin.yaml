@@ -1,0 +1,5 @@
+name: openrouter-better-proxy
+kind: model-provider
+version: 1.0.0
+description: OpenRouter Better Proxy provider
+author: Custom

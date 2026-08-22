@@ -1,0 +1,10 @@
+# OpenRouter Better Proxy — Plugin Configuration
+#
+# This file overrides the default base_url for the proxy.
+# Change this value to point to your deployed proxy instance.
+#
+# Example:
+#   proxy_url: "http://192.168.1.251:8787/v1"
+#   proxy_url: "http://your-server:8787/v1"
+
+proxy_url: "http://192.168.1.251:8787/v1"
