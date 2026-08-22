@@ -1,5 +1,6 @@
 """Main entry point — uvicorn startup with scheduler."""
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -79,6 +80,12 @@ async def lifespan(app: FastAPI):
 
     # Start scheduler
     await _scheduler.start()
+
+    # Wait briefly for network to stabilize before first refresh
+    await asyncio.sleep(5)
+
+    # Initial refresh to populate endpoint cache immediately
+    await _scheduler.manual_refresh()
 
     yield
 
