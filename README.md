@@ -62,6 +62,7 @@ Choose one of the following deployment options:
 
 ```bash
 # Clone the repository
+cd /opt
 git clone https://github.com/rafpigna/openrouter-better-proxy.git
 cd openrouter-better-proxy
 
