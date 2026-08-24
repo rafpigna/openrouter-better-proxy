@@ -156,6 +156,10 @@ class RefreshScheduler:
                         await self._evaluate_migration(model_id, events, cache_data)
 
         logger.info(f"Endpoint refresh complete: {results}")
+
+        # Periodic cleanup of stale sessions (every refresh cycle)
+        removed = self.sessions.cleanup_stale(max_age_hours=24)
+
         return results
 
     async def _evaluate_migration(self, model_id: str, events: list[dict], cache_data: dict) -> None:

@@ -1,7 +1,12 @@
-"""Session sticky routing manager."""
+"""Session sticky routing manager.
+
+In-memory only: state is lost on restart (by design).
+Session cleanup is performed periodically by the scheduler to
+prevent unbounded memory growth.
+"""
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class SessionManager:
@@ -38,3 +43,23 @@ class SessionManager:
     def get_all_sessions(self) -> dict[str, str]:
         """Get all session mappings (for debugging)."""
         return dict(self._sessions)
+
+    def cleanup_stale(self, max_age_hours: int = 24) -> int:
+        """Remove sessions older than max_age_hours since last access.
+
+        Returns the number of sessions removed.
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+        stale = [
+            sid for sid, last in self._last_access.items()
+            if last < cutoff
+        ]
+        for sid in stale:
+            self.remove_session(sid)
+        if stale:
+            from logging import getLogger
+            getLogger(__name__).info(
+                "Cleaned up %d stale session(s) (older than %dh)",
+                len(stale), max_age_hours,
+            )
+        return len(stale)
