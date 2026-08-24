@@ -33,8 +33,7 @@ class EndpointFetcher:
         # Retry once on transient errors (DNS, connection)
         for attempt in range(2):
             try:
-                async with self._client as client:
-                    resp = await client.get(url, headers=headers)
+                    resp = await self._client.get(url, headers=headers)
                     if resp.status_code != 200:
                         logger.error(f"Failed to fetch endpoints for {model_id}: {resp.status_code}")
                         return None
