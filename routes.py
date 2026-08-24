@@ -22,6 +22,9 @@ router = APIRouter()
 _router: Optional[Router] = None
 _endpoint_cache: Optional[EndpointCache] = None
 
+# Request counter (incremented on each /v1/chat/completions)
+REQUEST_COUNT = 0
+
 
 def init_routes(router_instance: Router, endpoint_cache: EndpointCache) -> None:
     """Inject router and cache into routes module."""
@@ -153,6 +156,8 @@ async def chat_completions(request: dict):
     )
 
     # Select provider
+    global REQUEST_COUNT
+    REQUEST_COUNT += 1
     selection = _router.select_provider(
         model_id=model_id,
         session_id=session_id,

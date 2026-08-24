@@ -3,6 +3,7 @@
 server:
   host: "0.0.0.0"
   port: 8787
+  dashboard: true       # Abilita dashboard web (default: true)
 
 # Models managed: each section defines a model.
 models:

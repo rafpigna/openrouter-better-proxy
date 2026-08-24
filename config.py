@@ -45,6 +45,14 @@ class Config:
     def port(self) -> int:
         return self.raw.get("server", {}).get("port", 8787)
 
+    @property
+    def dashboard_enabled(self) -> bool:
+        """Dashboard abilitata di default, disabilitabile via config o env var."""
+        enabled = self.raw.get("server", {}).get("dashboard", True)
+        if os.environ.get("DASHBOARD_DISABLED") == "1":
+            return False
+        return bool(enabled)
+
     # --- Models ---
     @property
     def models(self) -> dict[str, Any]:

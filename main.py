@@ -39,16 +39,24 @@ logger = logging.getLogger(__name__)
 # Global scheduler reference
 _scheduler = None
 
+# SSELogHandler (initialised during lifespan if dashboard is enabled)
+_log_handler = None
+
 
 def get_scheduler():
     """Get global scheduler instance."""
     return _scheduler
 
 
+def get_log_handler():
+    """Get global SSE log handler instance."""
+    return _log_handler
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: start scheduler on init, stop on shutdown."""
-    global _scheduler
+    global _scheduler, _log_handler
 
     # Initialize components
     backoff = BackoffManager(
@@ -74,6 +82,28 @@ async def lifespan(app: FastAPI):
 
     # Wire routes
     init_routes(router, cache)
+
+    # Initialise dashboard components if enabled
+    if config.dashboard_enabled:
+        from log_handler import SSELogHandler
+        from web_routes import router as web_router, init_web_routes
+
+        # SSELogHandler: capture all INFO+ log records
+        _log_handler = SSELogHandler(level=logging.INFO)
+        _log_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        logging.getLogger().addHandler(_log_handler)
+
+        # Inject dependencies into web_routes
+        init_web_routes(_scheduler, router, _log_handler)
+
+        # Include web routes
+        app.include_router(web_router)
+
+        logger.info("Dashboard enabled — web routes active")
+    else:
+        logger.info("Dashboard disabled — web routes inactive")
 
     logger.info(f"Starting server on {config.host}:{config.port}")
     logger.info(f"Models configured: {list(config.models.keys())}")
@@ -102,12 +132,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Include routes
+# Include core routes (always present)
 app.include_router(routes_router)
 
 
 def main():
     """Start uvicorn."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="OpenRouter Better Proxy")
+    parser.add_argument("--noweb", action="store_true",
+                        help="Disable dashboard (overrides config.yaml)")
+    args = parser.parse_args()
+
+    # --noweb overrides dashboard enablement for python main.py runs
+    if args.noweb:
+        import os as _os
+        _os.environ["DASHBOARD_DISABLED"] = "1"
+        print("Dashboard disabled via --noweb flag")
+
     import uvicorn
 
     uvicorn.run(

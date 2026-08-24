@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenRouter Better Proxy — Dashboard</title>
+    <style>
+        /* Placeholder styles — to be implemented in Phase 2 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 200px; background: #16213e; padding: 20px; }
+        .sidebar h1 { font-size: 1.2rem; margin-bottom: 30px; }
+        .sidebar nav a { display: block; padding: 10px; color: #eee; text-decoration: none; border-radius: 4px; margin-bottom: 5px; }
+        .sidebar nav a:hover, .sidebar nav a.active { background: #0f3460; }
+        .main { flex: 1; padding: 30px; }
+        .section { display: none; }
+        .section.active { display: block; }
+        h2 { margin-bottom: 20px; }
+        .card { background: #16213e; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .btn { background: #0f3460; color: #eee; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        .btn:hover { background: #533483; }
+        pre { background: #0f0f23; padding: 15px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <h1>ORBP Dashboard</h1>
+            <nav>
+                <a href="#" class="active" data-section="dashboard">Dashboard</a>
+                <a href="#" data-section="config">Configuration</a>
+                <a href="#" data-section="services">Service Controls</a>
+            </nav>
+        </div>
+        <div class="main">
+            <!-- Dashboard Section -->
+            <div id="dashboard" class="section active">
+                <h2>System Overview</h2>
+                <div class="card">
+                    <p>Dashboard content will be implemented in Phase 2.</p>
+                </div>
+            </div>
+
+            <!-- Config Section -->
+            <div id="config" class="section">
+                <h2>Configuration Editor</h2>
+                <div class="card">
+                    <p>Config editor will be implemented in Phase 2.</p>
+                </div>
+            </div>
+
+            <!-- Services Section -->
+            <div id="services" class="section">
+                <h2>Service Controls</h2>
+                <div class="card">
+                    <p>Service controls will be implemented in Phase 2.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Placeholder navigation — to be implemented in Phase 2
+        document.querySelectorAll('.sidebar nav a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.sidebar nav a').forEach(l => l.classList.remove('active'));
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                link.classList.add('active');
+                document.getElementById(link.dataset.section).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
