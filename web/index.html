@@ -1167,7 +1167,14 @@ function objectToYaml(obj, indent) {
     } else if (typeof val === 'boolean') {
       lines.push(pad + k + ': ' + (val ? 'true' : 'false'));
     } else if (typeof val === 'number') {
-      lines.push(pad + k + ': ' + val);
+      // Preserve decimal for known float fields (YAML distingue 3.0 da 3)
+      const floatFields = ['hysteresis_mult', 'price_change_threshold', 'input', 'completion', 'cache'];
+      const str = String(val);
+      if (str.indexOf('.') === -1 && floatFields.includes(key)) {
+        lines.push(pad + k + ': ' + val + '.0');
+      } else {
+        lines.push(pad + k + ': ' + val);
+      }
     } else if (typeof val === 'string') {
       if (val.includes('\n') || val.includes(': ') || val.startsWith(' ') || val.includes('"') || val.includes("'")) {
         lines.push(pad + k + ': "' + val.replace(/"/g, '\\"') + '"');
@@ -1208,7 +1215,10 @@ function objectToYaml(obj, indent) {
 function formatScalar(v) {
   if (v === null || v === undefined) return 'null';
   if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number') return String(v);
+  if (typeof v === 'number') {
+    // Preserve .0 for integer floats
+    return String(v).indexOf('.') !== -1 ? String(v) : v % 1 === 0 ? v + '.0' : String(v);
+  }
   const s = String(v);
   if (s === '' || s.match(/[\[\]\{\},&\*!|>'"#%:@`]/) || s.includes(': ')) {
     return "'" + s.replace(/'/g, "''") + "'";
