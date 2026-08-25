@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import shutil
+import sys
 import signal
 import time
 import socket
@@ -418,7 +419,7 @@ async def api_restart():
         # Disconnect all SSE clients first
         if _log_handler is not None:
             _log_handler.disconnect_all()
-        os.kill(os.getpid(), signal.SIGTERM)
+        os._exit(0)  # Force exit — systemd Restart=always riavvia
     asyncio.create_task(_delayed_shutdown())
     return {
         "status": "ok",
