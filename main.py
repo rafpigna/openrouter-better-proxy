@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
         logging.getLogger().addHandler(_log_handler)
 
         # Inject dependencies into web_routes
-        init_web_routes(_scheduler, router, _log_handler)
+        init_web_routes(_scheduler, router, _log_handler, fetcher)
 
         # Include web routes
         app.include_router(web_router)

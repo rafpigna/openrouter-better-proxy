@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import httpx
 import yaml
 from config import config
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 _scheduler: Optional[Any] = None        # RefreshScheduler
 _router_instance: Optional[Any] = None  # Router
 _log_handler: Optional[Any] = None      # SSELogHandler
+_fetcher: Optional[Any] = None          # EndpointFetcher
 _start_time: float = time.monotonic()
 _config_lock = asyncio.Lock()           # protects config file operations
 
@@ -51,12 +53,14 @@ def init_web_routes(
     scheduler: Any,
     router_instance: Any,
     log_handler: Any,
+    fetcher: Any = None,
 ) -> None:
     """Inject dependencies after startup."""
-    global _scheduler, _router_instance, _log_handler
+    global _scheduler, _router_instance, _log_handler, _fetcher
     _scheduler = scheduler
     _router_instance = router_instance
     _log_handler = log_handler
+    _fetcher = fetcher
 
 
 def increment_request_count() -> None:
@@ -174,7 +178,7 @@ class HealthConfig(BaseModel):
 
 class ConfigSchema(BaseModel):
     server: ServerConfig = ServerConfig()
-    models: dict[str, ModelConfig] = Field(..., min_length=1)
+    models: dict[str, ModelConfig] = Field(..., min_length=0)
     migration: MigrationConfig = MigrationConfig()
     refresh: RefreshConfig = RefreshConfig()
     health: HealthConfig = HealthConfig()
@@ -573,3 +577,182 @@ async def api_logs_recent(limit: int = Query(50, ge=1, le=500)):
             continue
 
     return {"data": entries, "total": len(entries)}
+
+
+# ---------------------------------------------------------------------------
+# Model catalog (fetch on-demand from OpenRouter API)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/models/catalog")
+async def api_models_catalog():
+    """Fetch and return the filtered OpenRouter model catalog.
+    On-demand, no server-side caching. Timeout 30s.
+    """
+    api_key = config.openrouter_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch model catalog: {e}",
+            )
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenRouter returned {resp.status_code} for model catalog",
+        )
+
+    data = resp.json()
+    raw_models = data.get("data", [])
+
+    filtered = []
+    for m in raw_models:
+        pricing = m.get("pricing", {})
+        prompt_price = pricing.get("prompt", "0")
+        completion_price = pricing.get("completion", "0")
+        free = prompt_price == "0" and completion_price == "0"
+
+        filtered.append({
+            "id": m.get("id"),
+            "name": m.get("name"),
+            "context_length": m.get("context_length"),
+            "pricing": {
+                "prompt": prompt_price,
+                "completion": completion_price,
+                "input_cache_read": pricing.get("input_cache_read", "0"),
+            },
+            "free": free,
+            "architecture": {
+                "modality": m.get("architecture", {}).get("modality", "text->text"),
+            },
+            "reasoning": m.get("reasoning", {"mandatory": False}),
+        })
+
+    return {"data": filtered, "total": len(filtered)}
+
+
+# ---------------------------------------------------------------------------
+# Model endpoints (reuse EndpointFetcher)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/models/{model_id:path}/endpoints")
+async def api_model_endpoints(model_id: str):
+    """Return provider endpoints and pricing for a specific model."""
+    if _fetcher is None:
+        raise HTTPException(status_code=500, detail="Endpoint fetcher not initialized")
+
+    result = await _fetcher.fetch_model_endpoints(model_id)
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch endpoints for {model_id}",
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Config: delete model
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/api/config/models/{model_id:path}")
+async def api_config_delete_model(model_id: str):
+    """Remove a model from config, with backup and reload."""
+    async with _config_lock:
+        config_dict = await _read_config_dict()
+        models = config_dict.get("models", {})
+        if model_id not in models:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model '{model_id}' not found in config",
+            )
+        del models[model_id]
+        config_dict["models"] = models
+
+        # Backup before writing
+        await _backup_config()
+
+        # Write updated config
+        raw = yaml.dump(config_dict, default_flow_style=False, sort_keys=False)
+        await asyncio.to_thread(lambda: CONFIG_YAML_PATH.write_text(raw))
+
+    # Reload config in the running process
+    from config import config
+    config.load()
+
+    return {
+        "status": "ok",
+        "message": f"Model '{model_id}' removed and config reloaded",
+        "backup": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Config: export (download routing_config.yaml)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/config/export")
+async def api_config_export():
+    """Download the current routing_config.yaml."""
+    if not CONFIG_YAML_PATH.exists():
+        raise HTTPException(status_code=404, detail="Config file not found")
+    return FileResponse(
+        CONFIG_YAML_PATH,
+        media_type="application/x-yaml",
+        filename="routing_config.yaml",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Config: import (upload YAML, backup, validate, reload)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/config/import")
+async def api_config_import(request: Request):
+    """Import a replacement routing_config.yaml with backup and validation."""
+    raw_bytes = await request.body()
+    raw_text = raw_bytes.decode("utf-8").strip()
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Empty config body")
+
+    # Parse YAML
+    try:
+        data = yaml.safe_load(raw_text)
+        if not isinstance(data, dict):
+            raise ValueError("Root must be a mapping")
+    except (yaml.YAMLError, ValueError) as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid YAML: {e}"
+        )
+
+    # Validate with pydantic
+    _validate_config_schema(data)
+
+    # Backup and write (protected by async lock)
+    async with _config_lock:
+        await _backup_config()
+        await asyncio.to_thread(
+            lambda: CONFIG_YAML_PATH.write_text(raw_text)
+        )
+
+    # Reload config in the running process
+    from config import config
+    config.load()
+
+    return {
+        "status": "ok",
+        "message": "Config imported and reloaded",
+        "backup": True,
+    }

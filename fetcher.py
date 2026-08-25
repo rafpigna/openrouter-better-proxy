@@ -1,5 +1,6 @@
 """Endpoint fetcher — fetches provider endpoints from OpenRouter API."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime
