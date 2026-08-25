@@ -5,6 +5,8 @@ mai path relativi (il servizio potrebbe essere lanciato da ovunque).
 """
 
 import asyncio
+import csv
+import json
 import logging
 import os
 import shutil
@@ -18,7 +20,7 @@ from typing import Any, Optional
 
 import yaml
 from config import config
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
@@ -66,6 +68,12 @@ def get_request_count() -> int:
     """Current request counter (set by routes.py)."""
     from routes import REQUEST_COUNT
     return REQUEST_COUNT
+
+
+def get_error_count() -> int:
+    """Current error counter (set by routes.py)."""
+    from routes import ERROR_COUNT
+    return ERROR_COUNT
 
 
 # ===========================================================================
@@ -372,7 +380,7 @@ async def api_system():
         "disk": disk_data,
         "proxy": {
             "total_requests": get_request_count(),
-            "total_errors": 0,  # TODO: add separate error counter
+            "total_errors": get_error_count(),
             "active_sessions": sessions_count,
             "providers_in_cooldown": providers_in_cooldown,
             "cached_models": cached_models,
@@ -425,3 +433,143 @@ async def api_restart():
         "status": "ok",
         "message": "Service restarting in 500ms",
     }
+
+
+# ---------------------------------------------------------------------------
+# Log download endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/logs/download")
+async def api_logs_download(
+    format: str = "jsonl",
+    source: str = "proxy",
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None, alias="to"),
+):
+    """Download logs in various formats (jsonl, csv, txt)."""
+    log_path = BASE_DIR / "logs" / ("proxy.jsonl" if source == "proxy" else "app.log")
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail="Log file not found")
+
+    # No filter: return raw file directly (only for jsonl/proxy or txt/app)
+    if not from_ and not to:
+        if format == "jsonl":
+            if source == "proxy":
+                return FileResponse(
+                    log_path,
+                    media_type="application/x-ndjson",
+                    filename="proxy.jsonl",
+                )
+            else:
+                return FileResponse(
+                    log_path,
+                    media_type="text/plain",
+                    filename="app.log",
+                )
+        elif format == "txt" and source != "proxy":
+            return FileResponse(
+                log_path,
+                media_type="text/plain",
+                filename=f"{source}.log",
+            )
+        # For csv and txt/proxy, fall through to conversion below
+
+    # Read, filter, convert
+    raw = await asyncio.to_thread(lambda: log_path.read_text(encoding="utf-8", errors="replace"))
+    lines = [l for l in raw.splitlines() if l.strip()]
+
+    if source == "proxy" and (from_ or to):
+        # Filter proxy.jsonl by time range
+        filtered = []
+        for line in lines:
+            try:
+                entry = json.loads(line)
+                ts = entry.get("ts", "")
+                if from_ and ts < from_:
+                    continue
+                if to and ts > to:
+                    continue
+                filtered.append(entry)
+            except json.JSONDecodeError:
+                continue
+    else:
+        filtered = [json.loads(l) for l in lines if l.strip()] if source == "proxy" else lines
+
+    if format == "csv":
+        # Convert to CSV
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output, quoting=csv.QUOTE_ALL)
+        if source == "proxy":
+            fields = ["ts", "type", "model", "provider", "tier", "session_id", "stream",
+                      "status", "tokens_in", "tokens_out", "tokens_cached",
+                      "tokens_reasoning", "cost", "latency_ms", "error",
+                      "provider_response", "model_response"]
+            writer.writerow(fields)
+            for entry in filtered:
+                writer.writerow([entry.get(f) for f in fields])
+        else:
+            writer.writerow(["line"])
+            for line in filtered:
+                writer.writerow([line])
+        content = output.getvalue()
+        return PlainTextResponse(
+            content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=proxy.csv" if source == "proxy" else "attachment; filename=app.csv"},
+        )
+    elif format == "txt" and source == "proxy":
+        # TXT from proxy data: format as readable lines
+        content = "\n".join(
+            f"{e.get('ts','')} [{e.get('status','')}] {e.get('model','')} → {e.get('provider','')} "
+            f"in={e.get('tokens_in','')} out={e.get('tokens_out','')} cost={e.get('cost','')} "
+            f"lat={e.get('latency_ms','')}ms"
+            for e in filtered
+        )
+        return PlainTextResponse(
+            content,
+            media_type="text/plain",
+            headers={"Content-Disposition": "attachment; filename=proxy.txt"},
+        )
+    elif format == "txt":
+        # Raw app.log text
+        return PlainTextResponse(
+            "\n".join(filtered),
+            media_type="text/plain",
+            headers={"Content-Disposition": "attachment; filename=app.log"},
+        )
+    else:
+        # jsonl (filtered)
+        content = "\n".join(json.dumps(e) for e in filtered) + "\n"
+        return PlainTextResponse(
+            content,
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": "attachment; filename=proxy.jsonl"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Log recent (polling endpoint for dashboard)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/logs/recent")
+async def api_logs_recent(limit: int = Query(50, ge=1, le=500)):
+    """Return the last N structured log entries (polling for dashboard)."""
+    log_path = BASE_DIR / "logs" / "proxy.jsonl"
+    if not log_path.exists():
+        return {"data": [], "total": 0}
+
+    raw = await asyncio.to_thread(lambda: log_path.read_text(encoding="utf-8", errors="replace"))
+    lines = [l for l in raw.splitlines() if l.strip()]
+    tail = lines[-limit:]
+
+    entries = []
+    for line in tail:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    return {"data": entries, "total": len(entries)}

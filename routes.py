@@ -2,6 +2,8 @@
 
 import json
 import logging
+import time
+from datetime import datetime, timezone
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -24,6 +26,51 @@ _endpoint_cache: Optional[EndpointCache] = None
 
 # Request counter (incremented on each /v1/chat/completions)
 REQUEST_COUNT = 0
+ERROR_COUNT = 0
+
+# Proxy logger (writes structured JSON Lines to logs/proxy.jsonl)
+_proxy_logger = logging.getLogger("proxy")
+_proxy_logger.setLevel(logging.INFO)
+_proxy_logger.propagate = False
+_handler = logging.FileHandler("logs/proxy.jsonl")
+_handler.setFormatter(logging.Formatter("%(message)s"))
+_proxy_logger.addHandler(_handler)
+
+
+def _write_proxy_log(
+    model_id: str,
+    provider_slug: str,
+    tier: str,
+    session_id: str | None,
+    stream: bool,
+    status_code: int,
+    usage: dict | None,
+    latency_ms: int | None,
+    error_message: str | None,
+    provider_response: str | None,
+    model_response: str | None,
+) -> None:
+    """Write a structured JSON line to proxy.jsonl."""
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "type": "error" if error_message or (status_code != 200 and status_code != 0) else "request",
+        "model": model_id,
+        "provider": provider_slug,
+        "tier": tier,
+        "session_id": session_id,
+        "stream": stream,
+        "status": status_code,
+        "tokens_in": usage.get("prompt_tokens") if usage else None,
+        "tokens_out": usage.get("completion_tokens") if usage else None,
+        "tokens_cached": usage.get("prompt_tokens_details", {}).get("cached_tokens") if usage else None,
+        "tokens_reasoning": usage.get("completion_tokens_details", {}).get("reasoning_tokens") if usage else None,
+        "cost": usage.get("cost") if usage else None,
+        "latency_ms": latency_ms,
+        "error": error_message,
+        "provider_response": provider_response,
+        "model_response": model_response,
+    }
+    _proxy_logger.info(json.dumps(entry))
 
 
 def init_routes(router_instance: Router, endpoint_cache: EndpointCache) -> None:
@@ -59,8 +106,13 @@ async def list_models():
 async def _forward_stream(
     body: dict,
     provider_slug: str,
+    tier: str,
 ) -> AsyncGenerator[str, None]:
     """Forward streaming response from OpenRouter as SSE."""
+    global ERROR_COUNT
+    start = time.monotonic()
+    model_id = body.get("model", "")
+    session_id = body.get("session_id")
     api_key = config.openrouter_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not configured")
@@ -78,6 +130,12 @@ async def _forward_stream(
                     error_text = await resp.aread()
                     logger.error(f"Upstream error {resp.status_code}: {error_text}")
                     _router.record_error(provider_slug)
+                    ERROR_COUNT += 1
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    _write_proxy_log(
+                        model_id, provider_slug, tier, session_id, True,
+                        resp.status_code, None, latency_ms, error_text.decode(), None, None,
+                    )
                     # Return error as SSE event
                     error_data = {
                         "error": {
@@ -92,6 +150,10 @@ async def _forward_stream(
 
                 _router.record_success(provider_slug)
 
+                usage = None
+                provider_response = None
+                model_response = None
+
                 # Stream SSE chunks byte-by-byte
                 # Upstream already sends "data: {...}" format, pass through as-is
                 async for line in resp.aiter_lines():
@@ -102,15 +164,39 @@ async def _forward_stream(
                     if "OPENROUTER PROCESSING" in line:
                         logger.debug(f"Skipping upstream status message: {line[:100]}")
                         continue
+                    # Intercept usage in the chunk before [DONE]
+                    if line.startswith("data: ") and line[6:] != "[DONE]":
+                        try:
+                            chunk = json.loads(line[6:])
+                            if "usage" in chunk:
+                                usage = chunk["usage"]
+                            # Capture provider/model from response chunks
+                            if provider_response is None and chunk.get("provider"):
+                                provider_response = chunk.get("provider")
+                            if model_response is None and chunk.get("model"):
+                                model_response = chunk.get("model")
+                        except json.JSONDecodeError:
+                            pass
                     # Pass through the line as-is (upstream already has "data: " prefix)
                     yield f"{line}\n\n"
 
-                # End of stream
+                # End of stream — write proxy log
+                latency_ms = int((time.monotonic() - start) * 1000)
+                _write_proxy_log(
+                    model_id, provider_slug, tier, session_id, True,
+                    200, usage, latency_ms, None, provider_response, model_response,
+                )
                 yield "[DONE]\n\n"
 
     except httpx.ConnectError as e:
         logger.error(f"Connect error to {provider_slug}: {e}")
         _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        latency_ms = int((time.monotonic() - start) * 1000)
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, True,
+            502, None, latency_ms, str(e), None, None,
+        )
         error_data = {
             "error": {
                 "message": f"Provider {provider_slug} unreachable: {e}",
@@ -123,6 +209,12 @@ async def _forward_stream(
     except httpx.TimeoutException as e:
         logger.error(f"Timeout connecting to {provider_slug}: {e}")
         _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        latency_ms = int((time.monotonic() - start) * 1000)
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, True,
+            504, None, latency_ms, str(e), None, None,
+        )
         error_data = {
             "error": {
                 "message": f"Provider {provider_slug} timeout: {e}",
@@ -199,7 +291,7 @@ async def chat_completions(request: dict):
     # Return streaming or non-streaming response
     if stream:
         return StreamingResponse(
-            _forward_stream(upstream_body, provider_slug),
+            _forward_stream(upstream_body, provider_slug, tier),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -208,14 +300,19 @@ async def chat_completions(request: dict):
             },
         )
     else:
-        return await _forward_non_stream(upstream_body, provider_slug)
+        return await _forward_non_stream(upstream_body, provider_slug, tier)
 
 
 async def _forward_non_stream(
     body: dict,
     provider_slug: str,
+    tier: str,
 ) -> dict:
     """Forward non-streaming request to OpenRouter."""
+    global ERROR_COUNT
+    start = time.monotonic()
+    model_id = body.get("model", "")
+    session_id = body.get("session_id")
     api_key = config.openrouter_api_key
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not configured")
@@ -234,16 +331,37 @@ async def _forward_non_stream(
                 error_text = await resp.aread()
                 logger.error(f"Upstream error {resp.status_code}: {error_text}")
                 _router.record_error(provider_slug)
+                ERROR_COUNT += 1
+                latency_ms = int((time.monotonic() - start) * 1000)
+                _write_proxy_log(
+                    model_id, provider_slug, tier, session_id, False,
+                    resp.status_code, None, latency_ms, error_text.decode(), None, None,
+                )
                 raise HTTPException(
                     status_code=resp.status_code,
                     detail=f"Upstream error: {error_text.decode()}",
                 )
             _router.record_success(provider_slug)
-            return resp.json()
+            response_data = resp.json()
+            usage = response_data.get("usage")
+            provider_response = response_data.get("provider")
+            model_response = response_data.get("model")
+            latency_ms = int((time.monotonic() - start) * 1000)
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, False,
+                200, usage, latency_ms, None, provider_response, model_response,
+            )
+            return response_data
 
     except httpx.ConnectError as e:
         logger.error(f"Connect error to {provider_slug}: {e}")
         _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        latency_ms = int((time.monotonic() - start) * 1000)
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, False,
+            502, None, latency_ms, str(e), None, None,
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Provider {provider_slug} unreachable: {e}",
@@ -251,6 +369,12 @@ async def _forward_non_stream(
     except httpx.TimeoutException as e:
         logger.error(f"Timeout connecting to {provider_slug}: {e}")
         _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        latency_ms = int((time.monotonic() - start) * 1000)
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, False,
+            504, None, latency_ms, str(e), None, None,
+        )
         raise HTTPException(
             status_code=504,
             detail=f"Provider {provider_slug} timeout: {e}",
