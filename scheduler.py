@@ -106,9 +106,15 @@ class RefreshScheduler:
                 next_times.append(trigger)
             elif isinstance(time_spec, dict):
                 # Window like {from: "18:00", to: "22:00", step: "05m"}
-                from_str = time_spec.get("from", "00:00")
-                to_str = time_spec.get("to", "23:59")
-                step_str = time_spec.get("step", "05m")
+                # Safeguard: YAML may parse times without colon as int (e.g. 18 -> 18)
+                from_str = str(time_spec.get("from", "00:00"))
+                to_str = str(time_spec.get("to", "23:59"))
+                step_str = str(time_spec.get("step", "05m"))
+
+                # Skip if from/to aren't valid time strings
+                if ":" not in from_str or ":" not in to_str:
+                    logger.warning(f"Skipping invalid refresh time spec: {time_spec}")
+                    continue
 
                 from_h, from_m = map(int, from_str.split(":"))
                 to_h, to_m = map(int, to_str.split(":"))
