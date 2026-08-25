@@ -119,6 +119,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Shutdown: disconnect all SSE clients FIRST — prima che uvicorn provi
+    # a chiudere le connessioni in graceful shutdown (che hang perché le
+    # SSE sono long-lived). Vedi DESIGN per analisi opzione A vs B.
+    if _log_handler is not None:
+        logger.info("Shutdown: disconnecting SSE clients")
+        _log_handler.disconnect_all()
+
     # Stop scheduler on shutdown
     await _scheduler.stop()
     await fetcher.close()

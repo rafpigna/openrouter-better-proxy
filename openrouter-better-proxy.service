@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/openrouter-better-proxy
-ExecStart=/opt/openrouter-better-proxy/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8787 --log-level info
+ExecStart=/opt/openrouter-better-proxy/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8787 --log-level info --timeout-graceful-shutdown 5
 Restart=always
 RestartSec=3
 
