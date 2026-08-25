@@ -701,6 +701,9 @@ function connectSSE() {
 
   eventSource.onerror = () => {
     document.getElementById('log-status').textContent = '🔴 disconnected, retrying...';
+    // Refresh system+status data optimistically — il server potrebbe già essere tornato
+    fetchSystem();
+    fetchStatus();
     eventSource.close();
     eventSource = null;
     setTimeout(connectSSE, 3000);
@@ -708,6 +711,9 @@ function connectSSE() {
 
   eventSource.onopen = () => {
     document.getElementById('log-status').textContent = '🟢 connected';
+    // Dopo riconnessione SSE, refresh completo dei dati dashboard
+    fetchSystem();
+    fetchStatus();
   };
 }
 
