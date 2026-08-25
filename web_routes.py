@@ -132,9 +132,9 @@ class ServerConfig(BaseModel):
 
 
 class MaxPriceModel(BaseModel):
-    input: float = 0.0
-    completion: float = 0.0
-    cache: Optional[float] = 0.0
+    input: float = Field(0.0, ge=0.0)
+    completion: float = Field(0.0, ge=0.0)
+    cache: Optional[float] = Field(0.0, ge=0.0)
 
 
 class ModelConfig(BaseModel):
@@ -145,23 +145,23 @@ class ModelConfig(BaseModel):
 
 class MigrationConfig(BaseModel):
     enabled: bool = True
-    hysteresis_mult: float = 3.0
-    est_turns_per_session: int = 50
-    r_cache_estimate: int = 300000
-    out_per_turn_estimate: int = 40000
+    hysteresis_mult: float = Field(3.0, ge=0.0)
+    est_turns_per_session: int = Field(50, ge=1)
+    r_cache_estimate: int = Field(300000, ge=0)
+    out_per_turn_estimate: int = Field(40000, ge=0)
 
 
 class RefreshConfig(BaseModel):
-    interval_minutes: int = 30
-    price_change_threshold: float = 0.01
+    interval_minutes: int = Field(30, ge=1, le=1440)
+    price_change_threshold: float = Field(0.01, ge=0.0)
     times: list[Any] = []
 
 
 class HealthConfig(BaseModel):
-    initial_cooldown_seconds: int = 300
-    consecutive_threshold: int = 3
-    escalation_seconds: list[int] = [3600, 43200]
-    max_cooldown_seconds: int = 43200
+    initial_cooldown_seconds: int = Field(300, ge=0)
+    consecutive_threshold: int = Field(3, ge=1)
+    escalation_seconds: list[int] = Field([3600, 43200], min_length=1)
+    max_cooldown_seconds: int = Field(43200, ge=0)
 
 
 class ConfigSchema(BaseModel):
