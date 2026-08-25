@@ -22,8 +22,14 @@ class EndpointFetcher:
         self.cache = cache
         self._client = httpx.AsyncClient(timeout=30.0)
 
+    def _ensure_client(self):
+        """Recreate the HTTP client if it was closed (e.g. by lifespan shutdown)."""
+        if self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0)
+
     async def fetch_model_endpoints(self, model_id: str) -> Optional[dict]:
         """Fetch endpoints for a model from OpenRouter API with retry."""
+        self._ensure_client()
         url = f"https://openrouter.ai/api/v1/models/{model_id}/endpoints"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
