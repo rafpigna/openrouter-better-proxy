@@ -112,7 +112,7 @@ async def lifespan(app: FastAPI):
     await _scheduler.start()
 
     # Wait briefly for network to stabilize before first refresh
-    await asyncio.sleep(5)
+    await asyncio.sleep(2)
 
     # Initial refresh to populate endpoint cache immediately
     await _scheduler.manual_refresh()
