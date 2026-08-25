@@ -85,6 +85,9 @@ curl http://localhost:8787/health
 
 # Test models endpoint
 curl http://localhost:8787/v1/models
+
+# Access dashboard (if enabled)
+# Open http://localhost:8787/dashboard/ in your browser
 ```
 
 ## Configuration
@@ -95,6 +98,7 @@ curl http://localhost:8787/v1/models
 server:
   host: "0.0.0.0"      # Bind address (use 127.0.0.1 for localhost-only)
   port: 8787
+  dashboard: true       # Enable web dashboard (default: true)
 
 models:
   "deepseek/deepseek-v4-flash-0731":

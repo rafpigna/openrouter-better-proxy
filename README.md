@@ -416,6 +416,14 @@ curl http://localhost:8787/status
 | `/v1/chat/completions` | POST | Chat completion (forwarded to best provider) |
 | `/refresh` | POST | Manually trigger price cache refresh |
 | `/status` | GET | Router status (sessions, backoff, migration log) |
+| `/dashboard/` | GET | Web dashboard UI |
+| `/api/logs` | SSE | Real-time log streaming |
+| `/api/config` | GET/PUT | Read/update configuration |
+| `/api/config/raw` | GET | Raw YAML config text |
+| `/api/status` | GET | Extended system status |
+| `/api/system` | GET | OS metrics (CPU, RAM, disk) |
+| `/api/refresh` | POST | Trigger price refresh |
+| `/api/restart` | POST | Restart the service |
 
 ### Logs
 
@@ -505,6 +513,36 @@ The proxy will auto-refresh prices based on the schedule in `routing_config.yaml
 - Verify `migration.enabled` is `true`
 - Increase `hysteresis_mult` if migrations are too aggressive, or decrease if they're too conservative
 - Check that price changes are being detected (look for `price_change` events in logs)
+
+---
+
+## Dashboard
+
+The proxy includes a web dashboard for monitoring and managing the service in real time.
+
+### Access
+
+Open `http://<host>:<port>/dashboard/` in your browser.
+
+### Sections
+
+- **Dashboard** — system overview cards (models, sessions, providers, errors), OS metrics (CPU, RAM, disk) with configurable polling interval (5-60s), and live log streaming via SSE.
+- **Configuration** — web form to view and edit `routing_config.yaml`. Changes are saved with automatic timestamped backups.
+- **Service Controls** — trigger price refresh, restart the service, view scheduler status and migration log.
+
+### Enable / Disable
+
+The dashboard is enabled by default. To disable it:
+
+| Method | How |
+|--------|-----|
+| **Config** | Set `server.dashboard: false` in `routing_config.yaml` |
+| **Env var** | Set `DASHBOARD_DISABLED=1` |
+| **CLI** | Pass `--noweb` when running with `python main.py` |
+
+### Change port
+
+Edit `server.port` in `routing_config.yaml` and restart the service. If you use the systemd service file, update the `--port` argument in `ExecStart` to match.
 
 ---
 
