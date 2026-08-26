@@ -3,11 +3,13 @@
 Implements the selection algorithm from DESIGN.md §3:
 1. Get endpoint list from cache (or fetch if missing)
 2. Filter by quantization tier (tiered)
-3. Filter by provider order
+3. Filter by provider order — STRICT ALLOWLIST GATE
 4. Filter by max_price
 5. Filter by backoff health
 6. Order by provider priority, then price
 7. Apply session stickiness
+8. Expose the ordered candidate LIST so routes.py can fail over
+   in-process across authorized providers only.
 """
 
 import logging
@@ -27,7 +29,7 @@ PER_MILLION = 1_000_000
 
 
 class Router:
-    """Main router: selects best provider for a model + session."""
+    """Main router: selects the ordered list of authorized providers for a request."""
 
     def __init__(
         self,
@@ -39,49 +41,99 @@ class Router:
         self.sessions = sessions
         self.endpoint_cache = endpoint_cache
 
+    def select_candidates(
+        self,
+        model_id: str,
+        session_id: Optional[str] = None,
+        tools: bool = False,
+    ) -> list[tuple[str, str]]:
+        """Return the ordered list of viable (provider_slug, quantization_tier).
+
+        Strictly limited to providers listed in the model config (`providers`):
+        a provider whose slug base is NOT in that list is **never** a candidate
+        (allowlist gate). The list is sorted by tier priority, then provider
+        priority, then price. A session's sticky provider (if still healthy and
+        authorized) is placed first to preserve its cache.
+
+        Returns [] when no authorized, usable provider exists.
+        """
+        endpoints = self._get_endpoints(model_id)
+        if not endpoints:
+            logger.warning(f"No endpoints cached for model {model_id}")
+            return []
+
+        model_config = config.get_model_config(model_id)
+        if not model_config:
+            logger.warning(f"No config for model {model_id}")
+            return []
+
+        quantizations = model_config.get("quantizations", ["fp8", "fp4"])
+        provider_order = model_config.get("providers", [])
+
+        candidates = self._compute_candidates(
+            model_id, quantizations, provider_order,
+            model_config.get("max_price", {}), endpoints,
+        )
+
+        # Build ordered result (allowlist already applied in _compute_candidates)
+        ordered: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        # Session stickiness first (preserve cache), if still healthy + authorized
+        if session_id:
+            sticky = self.sessions.get_provider(session_id)
+            if sticky and not self.backoff.is_cooldown(sticky):
+                if any(c["slug"] == sticky for c in candidates):
+                    tier = self._detect_tier(sticky, quantizations)
+                    ordered.append((sticky, tier))
+                    seen.add(sticky)
+
+        for c in candidates:
+            if c["slug"] not in seen:
+                ordered.append((c["slug"], c["tier"]))
+                seen.add(c["slug"])
+
+        return ordered
+
     def select_provider(
         self,
         model_id: str,
         session_id: Optional[str] = None,
         tools: bool = False,
     ) -> Optional[tuple[str, str]]:
-        """Select best provider for a model.
+        """Back-compat: return the single best (provider_slug, tier), or None.
 
-        Returns:
-            (provider_slug, quantization_tier) or None if no candidates.
+        The session binding is no longer done here; routes.py binds the session
+        to the provider that actually *served* the request (after a successful
+        upstream response), so a failed candidate is never recorded as sticky.
         """
-        # 1. Check session stickiness first
-        if session_id and self.sessions.has_session(session_id):
-            sticky_provider = self.sessions.get_provider(session_id)
-            if sticky_provider and not self.backoff.is_cooldown(sticky_provider):
-                logger.debug(f"Session {session_id} sticky to {sticky_provider}")
-                return (sticky_provider, self._get_tier_for_provider(model_id, sticky_provider))
-
-        # 2. Get endpoint list
-        endpoints = self._get_endpoints(model_id)
-        if not endpoints:
-            logger.warning(f"No endpoints cached for model {model_id}")
+        cands = self.select_candidates(model_id, session_id, tools)
+        if not cands:
             return None
+        return cands[0]
 
-        # 3. Get model config
-        model_config = config.get_model_config(model_id)
-        if not model_config:
-            logger.warning(f"No config for model {model_id}")
-            return None
+    def bind_session(self, session_id: str, provider_slug: str) -> None:
+        """Pin a session to the provider that actually served the request."""
+        if session_id:
+            self.sessions.set_provider(session_id, provider_slug)
 
-        # 4. Get quantization tiers (tiered)
-        quantizations = model_config.get("quantizations", ["fp8", "fp4"])
+    def _compute_candidates(
+        self,
+        model_id: str,
+        quantizations: list[str],
+        provider_order: list[str],
+        max_price: dict,
+        endpoints: list[dict],
+    ) -> list[dict]:
+        """Filter endpoints into an ordered candidate list.
 
-        # 5. Get provider order
-        provider_order = model_config.get("providers", [])
-
-        # 6. Get max_price filters
-        max_price = model_config.get("max_price", {})
+        The allowlist gate lives here: a provider whose base slug is not in
+        `provider_order` is EXCLUDED, not merely deprioritized.
+        """
         max_input = max_price.get("input", float("inf"))
         max_completion = max_price.get("completion", float("inf"))
         max_cache = max_price.get("cache", float("inf"))
 
-        # 7. Filter and score candidates
         candidates = []
         for ep in endpoints:
             tag = ep.get("tag")
@@ -113,11 +165,13 @@ class Router:
             if tier not in quantizations:
                 continue
 
-            # Get provider priority index
-            try:
-                provider_idx = provider_order.index(tag.split("/")[0] if "/" in tag else tag)
-            except ValueError:
-                provider_idx = len(provider_order)
+            # ALLOWLIST GATE: never use a provider that isn't in the configured
+            # list, no matter how cheap/healthy it is.
+            base = tag.split("/")[0] if "/" in tag else tag
+            if base not in provider_order:
+                logger.debug(f"Provider {tag} not in allowlist {provider_order}; excluded")
+                continue
+            provider_idx = provider_order.index(base)
 
             candidates.append({
                 "slug": tag,
@@ -130,26 +184,16 @@ class Router:
 
         if not candidates:
             logger.debug(f"No valid candidates for model {model_id}")
-            return None
+            return []
 
-        # 8. Sort: by tier priority, then provider order, then price
+        # Sort: by tier priority, then provider order, then price
         tier_priority = {tier: i for i, tier in enumerate(quantizations)}
         candidates.sort(key=lambda c: (
             tier_priority.get(c["tier"], 999),
             c["provider_idx"],
             c["prompt_price"],
         ))
-
-        # 9. Pick best
-        best = candidates[0]
-        slug = best["slug"]
-
-        # 10. Store session mapping if applicable
-        if session_id:
-            self.sessions.set_provider(session_id, slug)
-
-        logger.debug(f"Selected {slug} (tier={best['tier']}) for model {model_id}")
-        return (slug, best["tier"])
+        return candidates
 
     def _get_endpoints(self, model_id: str) -> list[dict]:
         """Get endpoint list from cache or fetch."""
@@ -175,9 +219,11 @@ class Router:
     def _get_tier_for_provider(self, model_id: str, provider: str) -> str:
         """Get the tier for a specific provider (for sticky sessions)."""
         endpoints = self._get_endpoints(model_id)
+        mc = config.get_model_config(model_id) or {}
+        quantizations = mc.get("quantizations", ["fp8", "fp4"])
         for ep in endpoints:
             if ep.get("tag") == provider:
-                return self._detect_tier(provider, config.get_model_config(model_id).get("quantizations", ["fp8", "fp4"]))
+                return self._detect_tier(provider, quantizations)
         return "unknown"
 
     def record_error(self, provider: str) -> None:

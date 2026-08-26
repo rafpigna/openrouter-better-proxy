@@ -1,4 +1,12 @@
-"""Tests for router core logic."""
+"""Tests for router core logic.
+
+Covers the provider selection rules:
+- allowlist gate (never pick a provider outside the configured list)
+- tier fallback ONLY among authorized providers
+- max_price filter
+- session stickiness (sticky-first, rebound to the winning provider)
+- select_candidates() -> ordered list for in-process failover
+"""
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -43,6 +51,13 @@ def components(mock_config, monkeypatch):
     return router, backoff, sessions, cache
 
 
+# Per-token prices used below (=$/M ÷ 1e6):
+#   deepinfra   0.08 / 0.18 / 0.016
+#   streamlake  0.0786 / 0.15719 / 0.01572
+#   gmicloud    0.112 / 0.224 / 0.0224
+#   open-inference 0.065 / 0.14 / 0.014  (NOT in allowlist)
+
+
 class TestRouterSelection:
     """Test provider selection logic."""
 
@@ -50,7 +65,6 @@ class TestRouterSelection:
         """Test selection of best fp8 provider."""
         router, _, _, cache = components
 
-        # Mock endpoints (prices per-token)
         endpoints = [
             {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
             {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
@@ -65,31 +79,87 @@ class TestRouterSelection:
         # deepinfra wins (higher priority in config: ["deepseek", "deepinfra", "streamlake", "gmicloud"])
         assert slug == "deepinfra/fp8"
 
-    def test_fallback_to_fp4_when_fp8_exhausted(self, components):
-        """Test fallback to fp4 when fp8 providers are unavailable."""
+    def test_allowlist_gate_excludes_non_authorized(self, components):
+        """A non-authorized, cheaper provider is NEVER a candidate."""
+        router, _, _, cache = components
+
+        endpoints = [
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            # cheaper but NOT in providers list
+            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+        ]
+        cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
+
+        candidates = router.select_candidates("deepseek/deepseek-v4-flash-0731")
+        assert [c[0] for c in candidates] == ["deepinfra/fp8"]
+        assert router.select_provider("deepseek/deepseek-v4-flash-0731")[0] == "deepinfra/fp8"
+
+    def test_never_fallback_to_non_authorized_provider(self, components):
+        """When the only available providers are non-authorized -> None (no fallback)."""
         router, backoff, _, cache = components
 
-        # Mock endpoints with only fp4 (prices per-token)
+        # Only NON-authorized fp4 providers available
         endpoints = [
             {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
             {"tag": "sail-research/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000018", "input_cache_read": "0.000000020"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
-        # Mark fp8 providers as in cooldown (simulate all down)
+        # Authorized fp8 providers down (simulate all unavailable)
         backoff.mark_error("streamlake/fp8")
+        backoff.mark_error("deepinfra/fp8")
+
+        assert router.select_candidates("deepseek/deepseek-v4-flash-0731") == []
+        assert router.select_provider("deepseek/deepseek-v4-flash-0731") is None
+
+    def test_fallback_to_lower_tier_when_authorized(self, components, monkeypatch):
+        """Tier fallback (fp8 -> fp4) happens ONLY among authorized providers."""
+        router, backoff, _, cache = components
+
+        # Authorize a provider that has an fp4 variant, plus fp8 deepinfra
+        cfg = MagicMock()
+        cfg.get_model_config.return_value = {
+            "quantizations": ["fp8", "fp4"],
+            "providers": ["deepseek", "deepinfra", "open-inference"],
+            "max_price": {"input": 0.10, "completion": 0.25, "cache": 0.05},
+        }
+        monkeypatch.setattr(config, "get_model_config", cfg.get_model_config)
+
+        endpoints = [
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+        ]
+        cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
+
+        # fp8 authorized provider down -> fall back to authorized fp4
         backoff.mark_error("deepinfra/fp8")
 
         result = router.select_provider("deepseek/deepseek-v4-flash-0731")
         assert result is not None
         slug, tier = result
         assert tier == "fp4"
+        assert slug == "open-inference/fp4"
+
+    def test_select_candidates_ordered_list(self, components):
+        """select_candidates returns the ordered list used for failover."""
+        router, _, _, cache = components
+
+        endpoints = [
+            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            # gmicloud input 0.112 $/M > max_price input 0.10 -> filtered by price
+            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
+        ]
+        cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
+
+        candidates = router.select_candidates("deepseek/deepseek-v4-flash-0731")
+        # order by provider priority: deepinfra (idx1) then streamlake (idx2); gmicloud excluded by price
+        assert candidates == [("deepinfra/fp8", "fp8"), ("streamlake/fp8", "fp8")]
 
     def test_max_price_filter(self, components):
         """Test that providers above max_price are filtered."""
         router, _, _, cache = components
 
-        # Mock endpoints: deepinfra under cap (0.08 $/M), expensive over cap (0.15 $/M)
         endpoints = [
             {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
             {"tag": "expensive/provider", "pricing": {"prompt": "0.00000015", "completion": "0.00000030", "input_cache_read": "0.00000005"}},
@@ -102,7 +172,7 @@ class TestRouterSelection:
         assert slug == "deepinfra/fp8"  # expensive/provider should be filtered
 
     def test_session_stickiness(self, components):
-        """Test that sessions stick to their assigned provider."""
+        """A session is sticky to the provider that served it (sticky-first)."""
         router, _, sessions, cache = components
 
         endpoints = [
@@ -111,26 +181,26 @@ class TestRouterSelection:
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
-        # First request assigns session to deepinfra (higher priority in config)
-        result1 = router.select_provider("deepseek/deepseek-v4-flash-0731", session_id="session-123")
-        assert result1[0] == "deepinfra/fp8"
+        # No session: best = deepinfra (higher priority)
+        assert router.select_provider("deepseek/deepseek-v4-flash-0731")[0] == "deepinfra/fp8"
 
-        # Second request with same session should stick
-        result2 = router.select_provider("deepseek/deepseek-v4-flash-0731", session_id="session-123")
-        assert result2[0] == "deepinfra/fp8"
+        # Simulate streamlake having actually served this session (rebind after success)
+        router.bind_session("session-123", "streamlake/fp8")
+
+        # Now streamlake is placed first (stickiness preserved)
+        candidates = router.select_candidates("deepseek/deepseek-v4-flash-0731", session_id="session-123")
+        assert candidates[0] == ("streamlake/fp8", "fp8")
 
     def test_no_endpoints_returns_none(self, components):
-        """Test that missing endpoints returns None."""
+        """Test that missing endpoints returns None/empty."""
         router, _, _, _ = components
-
-        result = router.select_provider("nonexistent/model")
-        assert result is None
+        assert router.select_provider("nonexistent/model") is None
+        assert router.select_candidates("nonexistent/model") == []
 
     def test_provider_order_priority(self, components):
         """Test that provider order is respected when prices are equal."""
         router, _, _, cache = components
 
-        # Same price, different providers (per-token)
         endpoints = [
             {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
             {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
@@ -168,12 +238,10 @@ class TestBackoffManager:
             escalation_seconds=[3600],
             max_cooldown=43200,
         )
-        # 3 consecutive errors
         bm.mark_error("test-provider")
         bm.mark_error("test-provider")
         bm.mark_error("test-provider")
         assert bm.is_cooldown("test-provider")
-        # Should be in 1h cooldown now
         status = bm.get_status("test-provider")
         assert status["error_count"] == 3
         assert status["in_cooldown"]
@@ -183,7 +251,6 @@ class TestBackoffManager:
         bm = BackoffManager(initial_cooldown=1)  # 1 second
         bm.mark_error("test-provider")
         assert bm.is_cooldown("test-provider")
-        # Wait for cooldown to expire
         import time
         time.sleep(1.1)
         assert not bm.is_cooldown("test-provider")
