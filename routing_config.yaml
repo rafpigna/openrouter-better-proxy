@@ -1,40 +1,61 @@
-# OpenRouter Better Proxy — Configuration Example
+# OpenRouter Better Proxy — Configuration
+#
+# This file mirrors the RUNNING configuration deployed on LXC 251 (the
+# source of truth — the proxy is tested against this exact config).
+# The repo copy is kept aligned with production; end users can adapt it.
+#
+# DS4 model (test setup): streamlake added to providers and max_price raised
+# so that deepseek, deepinfra, streamlake AND gmicloud all pass the price
+# gate — this lets the failover actually exercise multiple authorized
+# providers instead of collapsing to a single one.
 
 server:
-  host: "0.0.0.0"
-  port: 8787
-  dashboard: true       # Abilita dashboard web (default: true)
+    host: 0.0.0.0
+    port: 8787
+    dashboard: true
+    sse_log: true
 
 # Models managed: each section defines a model.
 models:
-  "deepseek/deepseek-v4-flash-0731":
-    quantizations: ["fp8", "fp4"]   # priority order (tiered)
-    providers: ["deepseek", "deepinfra", "streamlake", "gmicloud"]  # priority order
-    max_price:
-      input: 0.10
-      completion: 0.25
-      cache: 0.05
+    deepseek/deepseek-v4-flash-0731:
+        quantizations:
+          - fp8
+          - fp4
+        providers:
+          - deepseek
+          - deepinfra
+          - streamlake
+          - gmicloud
+        max_price:                     # $/M tokens; raised so all 4 providers pass
+            input: 0.30
+            completion: 0.80
+            cache: 0.10
+    z-ai/glm-5.3:
+        quantizations:
+          - fp8
+        providers:
+          - z-ai/fp8
+        max_price:
+            input: 1.4
+            completion: 4.4
+            cache: 0.26
 
 # Global sections (apply to all models).
 migration:
-  enabled: true
-  hysteresis_mult: 3.0
-  est_turns_per_session: 50
-  r_cache_estimate: 300000
-  out_per_turn_estimate: 40000
+    enabled: true
+    hysteresis_mult: 4.0
+    est_turns_per_session: 50
+    r_cache_estimate: 300000
+    out_per_turn_estimate: 40000
 
 refresh:
-  interval_minutes: 30
-  price_change_threshold: 1
-  times:
-    - "10:00"
-    - "10:05"
-    - "10:10"
-    - "16:00"
-    - {from: "18:00", to: "22:00", step: "05m"}
+    interval_minutes: 30
+    price_change_threshold: 10.0      # percent points (10 = 10%)
+    times: []
 
 health:
-  initial_cooldown_seconds: 300
-  consecutive_threshold: 3
-  escalation_seconds: [3600, 43200]
-  max_cooldown_seconds: 43200
+    initial_cooldown_seconds: 300
+    consecutive_threshold: 4
+    max_cooldown_seconds: 43200
+    escalation_seconds:
+      - 3600.0
