@@ -42,6 +42,15 @@ _proxy_logger.addHandler(_handler)
 _last_cache: dict[tuple[str, str], int] = {}
 
 
+def _is_transient_status(status: int) -> bool:
+    """True for retryable pre-stream errors: 429 and 5xx.
+
+    Definitive 4xx (400/404/422...) are NOT retried (no point retrying a
+    bad request), and mid-stream failures are handled separately (never
+    retryable)."""
+    return status == 429 or status >= 500
+
+
 def _write_proxy_log(
     model_id: str,
     provider_slug: str,
@@ -160,133 +169,138 @@ async def _forward_stream(
     last_status = None
     last_error_text = None
 
+    max_attempts = max(1, config.retry_max_attempts)
+    delay = max(0.0, config.retry_delay_seconds)
+
     for provider_slug, tier in candidates:
         # Pin this attempt to the authorized provider
         upstream = dict(body)
         upstream["provider"] = {"only": [provider_slug]}
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream("POST", url, json=upstream, headers=headers) as resp:
-                    if resp.status_code != 200:
-                        error_text = await resp.aread()
-                        logger.error(f"Upstream error {resp.status_code} ({provider_slug}): {error_text}")
-                        _router.record_error(provider_slug)
-                        ERROR_COUNT += 1
-                        latency_ms = int((time.monotonic() - start) * 1000)
-                        _write_proxy_log(
-                            model_id, provider_slug, tier, session_id, True,
-                            resp.status_code, None, latency_ms, error_text.decode(), None, None,
-                        )
-                        last_status = resp.status_code
-                        last_error_text = error_text.decode()
-                        continue  # try next authorized candidate
+        # Per-provider retry outcome (last failed attempt)
+        provider_status = None
+        provider_text = None
 
-                    # Success: bind session to the winning provider
-                    _router.record_success(provider_slug)
-                    _router.bind_session(session_id, provider_slug)
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                await asyncio.sleep(delay)
 
-                    usage = None
-                    provider_response = None
-                    model_response = None
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream("POST", url, json=upstream, headers=headers) as resp:
+                        if resp.status_code != 200:
+                            err_body = await resp.aread()
+                            provider_status = resp.status_code
+                            provider_text = err_body.decode()
+                            logger.warning(
+                                f"Attempt {attempt}/{max_attempts} {provider_slug}: "
+                                f"HTTP {resp.status_code} (treating as "
+                                f"{'retryable' if _is_transient_status(resp.status_code) else 'definitive'})"
+                            )
+                            # Definitive 4xx: no retry, failover now
+                            if not _is_transient_status(resp.status_code):
+                                break
+                            # Transient: try again (next attempt)
+                            continue
 
-                    try:
-                        # Stream SSE chunks byte-by-byte. Upstream already sends
-                        # "data: {...}" format, pass through as-is.
-                        async for line in resp.aiter_lines():
-                            if not line:
-                                continue
-                            # Skip "OPENROUTER PROCESSING" transient messages
-                            if "OPENROUTER PROCESSING" in line:
-                                logger.debug(f"Skipping upstream status message: {line[:100]}")
-                                continue
-                            # Intercept usage in the chunk before [DONE]
-                            if line.startswith("data: ") and line[6:] != "[DONE]":
-                                try:
-                                    chunk = json.loads(line[6:])
-                                    if "usage" in chunk:
-                                        usage = chunk["usage"]
-                                    if provider_response is None and chunk.get("provider"):
-                                        provider_response = chunk.get("provider")
-                                    if model_response is None and chunk.get("model"):
-                                        model_response = chunk.get("model")
-                                except json.JSONDecodeError:
-                                    pass
-                            yield f"{line}\n\n"
-                    except (httpx.ReadError, httpx.ProtocolError, httpx.HTTPError) as e:
-                        # Mid-stream failure: not revocable (DESIGN §4). Log it
-                        # as an error and cut the stream.
-                        _router.record_error(provider_slug)
-                        ERROR_COUNT += 1
-                        _write_proxy_log(
-                            model_id, provider_slug, tier, session_id, True,
-                            502, None, int((time.monotonic() - start) * 1000),
-                            f"mid-stream: {e}", provider_response, model_response,
-                        )
-                        error_data = {
-                            "error": {
-                                "message": f"Provider {provider_slug} stream interrupted: {e}",
-                                "type": "stream_error",
+                        # Success: bind session to the winning provider
+                        _router.record_success(provider_slug)
+                        _router.bind_session(session_id, provider_slug)
+
+                        usage = None
+                        provider_response = None
+                        model_response = None
+
+                        try:
+                            # Stream SSE chunks byte-by-byte. Upstream already sends
+                            # "data: {...}" format, pass through as-is.
+                            async for line in resp.aiter_lines():
+                                if not line:
+                                    continue
+                                if "OPENROUTER PROCESSING" in line:
+                                    logger.debug(f"Skipping upstream status message: {line[:100]}")
+                                    continue
+                                if line.startswith("data: ") and line[6:] != "[DONE]":
+                                    try:
+                                        chunk = json.loads(line[6:])
+                                        if "usage" in chunk:
+                                            usage = chunk["usage"]
+                                        if provider_response is None and chunk.get("provider"):
+                                            provider_response = chunk.get("provider")
+                                        if model_response is None and chunk.get("model"):
+                                            model_response = chunk.get("model")
+                                    except json.JSONDecodeError:
+                                        pass
+                                yield f"{line}\n\n"
+                        except (httpx.ReadError, httpx.ProtocolError, httpx.HTTPError) as e:
+                            # Mid-stream failure: not revocable (DESIGN §4). Log it
+                            # as an error and cut the stream.
+                            _router.record_error(provider_slug)
+                            ERROR_COUNT += 1
+                            _write_proxy_log(
+                                model_id, provider_slug, tier, session_id, True,
+                                502, None, int((time.monotonic() - start) * 1000),
+                                f"mid-stream: {e}", provider_response, model_response,
+                            )
+                            error_data = {
+                                "error": {
+                                    "message": f"Provider {provider_slug} stream interrupted: {e}",
+                                    "type": "stream_error",
+                                }
                             }
-                        }
-                        yield f"data: {json.dumps(error_data)}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
-                    except asyncio.CancelledError:
-                        # Client disconnected / aborted the stream. The upstream
-                        # request DID happen (and may be billed), so log it.
+                            yield f"data: {json.dumps(error_data)}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+                        except asyncio.CancelledError:
+                            # Client disconnected / aborted the stream. The upstream
+                            # request DID happen (and may be billed), so log it.
+                            _write_proxy_log(
+                                model_id, provider_slug, tier, session_id, True,
+                                200, usage, int((time.monotonic() - start) * 1000),
+                                None, provider_response, model_response,
+                            )
+                            raise
+
+                        # End of stream — write proxy log
                         _write_proxy_log(
                             model_id, provider_slug, tier, session_id, True,
                             200, usage, int((time.monotonic() - start) * 1000),
                             None, provider_response, model_response,
                         )
-                        raise
+                        yield "data: [DONE]\n\n"
+                        return
 
-                    # End of stream — write proxy log
-                    _write_proxy_log(
-                        model_id, provider_slug, tier, session_id, True,
-                        200, usage, int((time.monotonic() - start) * 1000),
-                        None, provider_response, model_response,
-                    )
-                    yield "data: [DONE]\n\n"
-                    return
+            except httpx.ConnectError as e:
+                provider_status = 502
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: connect error (retryable)")
+                # transient -> try again
+                continue
 
-        except httpx.ConnectError as e:
-            logger.error(f"Connect error to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, True,
-                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 502
-            last_error_text = str(e)
-            continue
+            except httpx.TimeoutException as e:
+                provider_status = 504
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: timeout (retryable)")
+                continue
 
-        except httpx.TimeoutException as e:
-            logger.error(f"Timeout connecting to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, True,
-                504, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 504
-            last_error_text = str(e)
-            continue
+            except httpx.HTTPError as e:
+                provider_status = 502
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: HTTP error (retryable)")
+                continue
 
-        except httpx.HTTPError as e:
-            # Read/Protocol/etc errors on the request path
-            logger.error(f"HTTP error to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, True,
-                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 502
-            last_error_text = str(e)
-            continue
+        # Out of the per-provider attempt loop (retries exhausted or definitive
+        # error): this provider failed for the request — record ONE error and
+        # fail over to the next authorized candidate.
+        _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, True,
+            provider_status or 503, None, int((time.monotonic() - start) * 1000),
+            provider_text or "no response", None, None,
+        )
+        last_status = provider_status or 503
+        last_error_text = provider_text or "no response"
 
     # Exhausted all authorized candidates with no success
     if last_status is not None:
@@ -412,78 +426,80 @@ async def _forward_non_stream(
     last_status = None
     last_error_text = None
 
+    max_attempts = max(1, config.retry_max_attempts)
+    delay = max(0.0, config.retry_delay_seconds)
+
     for provider_slug, tier in candidates:
         upstream = dict(body)
         upstream["provider"] = {"only": [provider_slug]}
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(url, json=upstream, headers=headers)
+        provider_status = None
+        provider_text = None
 
-            if resp.status_code != 200:
-                error_text = await resp.aread()
-                logger.error(f"Upstream error {resp.status_code} ({provider_slug}): {error_text}")
-                _router.record_error(provider_slug)
-                ERROR_COUNT += 1
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                await asyncio.sleep(delay)
+
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.post(url, json=upstream, headers=headers)
+
+                if resp.status_code != 200:
+                    err_body = await resp.aread()
+                    provider_status = resp.status_code
+                    provider_text = err_body.decode()
+                    logger.warning(
+                        f"Attempt {attempt}/{max_attempts} {provider_slug}: HTTP {resp.status_code} "
+                        f"(treating as {'retryable' if _is_transient_status(resp.status_code) else 'definitive'})"
+                    )
+                    if not _is_transient_status(resp.status_code):
+                        break
+                    # transient -> retry
+                    continue
+
+                # Success: bind session to the winning provider
+                _router.record_success(provider_slug)
+                _router.bind_session(session_id, provider_slug)
+
+                response_data = resp.json()
+                usage = response_data.get("usage")
+                provider_response = response_data.get("provider")
+                model_response = response_data.get("model")
                 latency_ms = int((time.monotonic() - start) * 1000)
                 _write_proxy_log(
                     model_id, provider_slug, tier, session_id, False,
-                    resp.status_code, None, latency_ms, error_text.decode(), None, None,
+                    200, usage, latency_ms, None, provider_response, model_response,
                 )
-                last_status = resp.status_code
-                last_error_text = error_text.decode()
-                continue  # try next authorized candidate
+                return response_data
 
-            # Success: bind session to the winning provider
-            _router.record_success(provider_slug)
-            _router.bind_session(session_id, provider_slug)
+            except httpx.ConnectError as e:
+                provider_status = 502
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: connect error (retryable)")
+                continue
 
-            response_data = resp.json()
-            usage = response_data.get("usage")
-            provider_response = response_data.get("provider")
-            model_response = response_data.get("model")
-            latency_ms = int((time.monotonic() - start) * 1000)
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, False,
-                200, usage, latency_ms, None, provider_response, model_response,
-            )
-            return response_data
+            except httpx.TimeoutException as e:
+                provider_status = 504
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: timeout (retryable)")
+                continue
 
-        except httpx.ConnectError as e:
-            logger.error(f"Connect error to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, False,
-                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 502
-            last_error_text = str(e)
-            continue
+            except httpx.HTTPError as e:
+                provider_status = 502
+                provider_text = str(e)
+                logger.warning(f"Attempt {attempt}/{max_attempts} {provider_slug}: HTTP error (retryable)")
+                continue
 
-        except httpx.TimeoutException as e:
-            logger.error(f"Timeout connecting to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, False,
-                504, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 504
-            last_error_text = str(e)
-            continue
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error to {provider_slug}: {e}")
-            _router.record_error(provider_slug)
-            ERROR_COUNT += 1
-            _write_proxy_log(
-                model_id, provider_slug, tier, session_id, False,
-                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
-            )
-            last_status = 502
-            last_error_text = str(e)
-            continue
+        # Out of the per-provider attempt loop: this provider failed.
+        _router.record_error(provider_slug)
+        ERROR_COUNT += 1
+        _write_proxy_log(
+            model_id, provider_slug, tier, session_id, False,
+            provider_status or 503, None, int((time.monotonic() - start) * 1000),
+            provider_text or "no response", None, None,
+        )
+        last_status = provider_status or 503
+        last_error_text = provider_text or "no response"
 
     # Exhausted all authorized candidates with no success
     if last_status is not None:

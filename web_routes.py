@@ -193,12 +193,18 @@ class HealthConfig(BaseModel):
     max_cooldown_seconds: int = Field(43200, ge=0)
 
 
+class RetryConfig(BaseModel):
+    max_attempts: int = Field(1, ge=1)
+    delay_seconds: float = Field(0.0, ge=0.0)
+
+
 class ConfigSchema(BaseModel):
     server: ServerConfig = ServerConfig()
     models: dict[str, ModelConfig] = Field(..., min_length=0)
     migration: MigrationConfig = MigrationConfig()
     refresh: RefreshConfig = RefreshConfig()
     health: HealthConfig = HealthConfig()
+    retry: RetryConfig = RetryConfig()
 
 
 async def _read_config_yaml() -> str:

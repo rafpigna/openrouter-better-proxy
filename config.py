@@ -128,6 +128,17 @@ class Config:
     def max_cooldown_seconds(self) -> int:
         return self.raw.get("health", {}).get("max_cooldown_seconds", 43200)
 
+    # --- Retry ---
+    @property
+    def retry_max_attempts(self) -> int:
+        """Total attempts per provider before failover (>=1). 1 = no retry."""
+        return int(self.raw.get("retry", {}).get("max_attempts", 1))
+
+    @property
+    def retry_delay_seconds(self) -> float:
+        """Fixed delay between retry attempts (seconds)."""
+        return float(self.raw.get("retry", {}).get("delay_seconds", 0))
+
     # --- Secrets ---
     @property
     def openrouter_api_key(self) -> str:
