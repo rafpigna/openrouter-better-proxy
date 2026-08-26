@@ -119,7 +119,7 @@ class PriceDiffDetector:
                     "model": model_id,
                     "changes": changes,
                 })
-                logger.info(f"Price change detected for {tag}: {changes}")
+                logger.info(f"Price change detected for model {model_id} at {tag}: {changes}")
                 # Human-readable summary in $/M tokens (per-token × 1e6).
                 new_parts = ", ".join(
                     f"{FIELD_NAMES.get(c['field'], c['field'])} ${_fmt_usd(c['new_value'] * PER_MILLION)}/M"
@@ -130,7 +130,7 @@ class PriceDiffDetector:
                     for c in changes
                 )
                 logger.info(
-                    f"Price change for {tag} — new: {new_parts} | diff: {diff_parts}"
+                    f"Price change for model {model_id} at {tag} — new: {new_parts} | diff: {diff_parts}"
                 )
 
         # Save new snapshot
