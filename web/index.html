@@ -49,7 +49,7 @@ body {
   display:flex; align-items:center; gap:8px;
 }
 .sidebar-header svg { flex-shrink:0; }
-.sidebar-header h1 { font-size:1rem; font-weight:600; letter-spacing:-0.3px; }
+.sidebar-header h1 { font-size:0.72rem; font-weight:600; letter-spacing:-0.2px; line-height:1.2; word-break:break-word; }
 .sidebar-nav { flex:1; padding:12px 8px; overflow-y:auto; }
 .nav-item {
   display:flex; align-items:center; gap:10px;
@@ -331,6 +331,74 @@ body {
 
 /* ---- No-wrap utility ---- */
 .nowrap { white-space:nowrap; }
+
+/* ---- v2.3: Data table for Logs + Recent Activity ---- */
+.data-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.data-table thead th { text-align:left; padding:8px 12px; color:var(--text-muted); border-bottom:1px solid var(--border); font-weight:500; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.3px; position:sticky; top:0; background:var(--bg-card); z-index:1; }
+.data-table tbody td { padding:6px 12px; border-bottom:1px solid var(--border); }
+.data-table tr:hover td { background:rgba(255,255,255,0.02); }
+.data-table .s-ok { color:var(--green); }
+.data-table .s-err { color:var(--red); font-weight:500; }
+.data-table .mono { font-family:'SF Mono','Fira Code','Cascadia Code',monospace; font-size:0.75rem; color:var(--text-muted); }
+
+/* ---- Logs filters bar ---- */
+.logs-filters-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 16px; background:var(--bg-card); border-radius:var(--radius) var(--radius) 0 0; border-bottom:1px solid var(--border); }
+.logs-filters-bar select,.logs-filters-bar input { padding:4px 8px; font-size:0.78rem; background:var(--bg-body); color:var(--text); border:1px solid var(--border); border-radius:4px; }
+.log-table-wrap { background:var(--bg-card); }
+.logs-empty { text-align:center; padding:24px; color:var(--text-dim); font-size:0.85rem; }
+.logs-footer { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--bg-card); border-top:1px solid var(--border); border-radius:0 0 var(--radius) var(--radius); flex-wrap:wrap; gap:8px; }
+.logs-pagination { display:flex; align-items:center; gap:8px; font-size:0.8rem; }
+.logs-download { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.radio-label { display:inline-flex; align-items:center; gap:3px; font-size:0.75rem; color:var(--text-muted); cursor:pointer; }
+.radio-label input[type=radio] { width:auto; margin:0; }
+
+/* ---- Modal wide (for Add/Edit) ---- */
+.modal-wide { max-width:680px; }
+
+/* ---- Recent Activity in Dashboard ---- */
+.recent-box { margin-top:16px; background:var(--bg-card); border-radius:var(--radius); box-shadow:var(--shadow); }
+.recent-header { display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-bottom:1px solid var(--border); }
+.recent-header h3 { font-size:0.9rem; }
+.recent-ctrl { display:flex; align-items:center; gap:6px; font-size:0.75rem; }
+.recent-ctrl select { padding:3px 6px; background:var(--bg-body); color:var(--text); border:1px solid var(--border); border-radius:4px; font-size:0.75rem; }
+.col-btn { background:var(--bg-body); border:1px solid var(--border); color:var(--text-muted); border-radius:4px; padding:3px 8px; cursor:pointer; font-size:0.75rem; position:relative; }
+.col-dropdown { display:none; position:absolute; top:100%; right:0; z-index:200; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:6px; min-width:160px; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+.col-dropdown.show { display:block; }
+.col-dropdown label { display:flex; align-items:center; gap:6px; font-size:0.75rem; padding:4px 6px; cursor:pointer; color:var(--text-muted); white-space:nowrap; }
+.col-dropdown label:hover { background:var(--accent); color:var(--text); }
+.col-dropdown input[type=checkbox] { width:auto; margin:0; }
+.recent-wrap { max-height:320px; overflow-y:auto; }
+.recent-empty { text-align:center; padding:24px; color:var(--text-dim); font-size:0.85rem; }
+
+/* ---- Hint icon ---- */
+.hint-icon { display:inline; cursor:pointer; opacity:0.6; font-size:0.8rem; vertical-align:middle; margin-left:4px; }
+.hint-icon:hover { opacity:1; }
+
+/* ---- Delete model btn ---- */
+.del-model-btn { font-size:0.85rem; cursor:pointer; padding:2px 8px; border-radius:4px; border:1px solid transparent; background:none; color:var(--text-muted); }
+.del-model-btn:hover { color:var(--red); border-color:var(--red); background:rgba(231,76,60,0.1); }
+
+/* ---- Timer refresh ---- */
+.timer-items { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+.timer-item { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; font-size:0.75rem; background:var(--accent); color:var(--text); }
+.timer-item button { cursor:pointer; opacity:0.6; background:none; border:none; color:inherit; font-size:0.8rem; padding:0; line-height:1; }
+.timer-item button:hover { opacity:1; }
+
+/* ---- Tag move buttons ---- */
+.tag-move { cursor:pointer; opacity:0.6; background:none; border:none; color:inherit; font-size:0.8rem; padding:0 2px; line-height:1; }
+.tag-move:hover { opacity:1; }
+
+/* ---- Import file input ---- */
+.import-btn-wrap { position:relative; display:inline-block; }
+.import-btn-wrap input[type=file] { position:absolute; opacity:0; width:0.1px; height:0.1px; }
+
+/* ---- Responsive for Logs filters ---- */
+@media(max-width:768px){
+  .logs-filters-bar { flex-direction:column; align-items:stretch; }
+  .logs-filters-bar select,.logs-filters-bar input { width:100% !important; }
+  .logs-footer { flex-direction:column; align-items:stretch; }
+  .recent-ctrl { flex-wrap:wrap; }
+}
 </style>
 </head>
 <body>
@@ -349,9 +417,95 @@ body {
   </div>
 </div>
 
-<!-- ============================================================
-     Toast container
-     ============================================================ -->
+<!-- Add Model modal -->
+<div class="modal-overlay" id="add-model-modal">
+  <div class="modal modal-wide">
+    <h3>+ Add Model</h3>
+    <div id="add-model-body">
+      <div class="form-group">
+        <label>Model</label>
+        <div style="display:flex;gap:8px;">
+          <select id="add-model-select" style="flex:1;" onchange="onModelSelect()">
+            <option value="">-- Select a model --</option>
+          </select>
+          <button class="btn btn-sm btn-outline" onclick="fetchCatalog()">Refresh</button>
+        </div>
+        <small style="color:var(--text-dim);">Fetched from OpenRouter catalog</small>
+      </div>
+      <div id="add-model-detail" style="display:none;">
+        <div class="form-row">
+          <div class="form-group"><label>Context Length</label><input type="text" id="add-ctx" readonly></div>
+          <div class="form-group"><label>Free</label><input type="text" id="add-free" readonly></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Max Price In ($)</label><input type="number" id="add-price-in" step="0.00000001" lang="en"></div>
+          <div class="form-group"><label>Max Price Out ($)</label><input type="number" id="add-price-out" step="0.00000001" lang="en"></div>
+          <div class="form-group"><label>Max Cache ($)</label><input type="number" id="add-price-cache" step="0.00000001" lang="en"></div>
+        </div>
+        <div class="form-group">
+          <label>Available Providers (click to add)</label>
+          <div id="add-providers-wrap" style="max-height:250px;overflow-y:auto;">
+            <table class="data-table"><thead><tr><th>Provider</th><th>Tag</th><th>Tier</th><th>Prompt</th><th>Completion</th><th>Cache</th><th>Uptime</th></tr></thead><tbody id="add-providers-tbody"></tbody></table>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Selected Providers</label>
+          <div class="tag-list" id="add-selected-providers"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddModel()">Cancel</button>
+      <button class="btn btn-primary" id="btn-add-model-save" onclick="saveAddModel()">Save to Config</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Providers modal -->
+<div class="modal-overlay" id="edit-providers-modal">
+  <div class="modal modal-wide">
+    <h3>Edit Providers -- <span id="edit-providers-model-name"></span></h3>
+    <div id="edit-providers-body">
+      <p style="color:var(--text-muted);font-size:0.85rem;" id="edit-providers-loading">Fetching provider data from OpenRouter...</p>
+      <div id="edit-providers-table-wrap" style="max-height:300px;overflow-y:auto;display:none;">
+        <table class="data-table"><thead><tr><th style="width:40px">Sel</th><th>Provider</th><th>Tag</th><th>Tier</th><th>Prompt</th><th>Completion</th><th>Cache</th><th>Uptime</th></tr></thead><tbody id="edit-providers-tbody"></tbody></table>
+      </div>
+      <div id="edit-selected-tags" style="margin-top:8px;">
+        <span style="font-size:0.8rem;color:var(--text-muted);">Selected tags:</span>
+        <div class="tag-list" id="edit-selected-list"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEditProviders()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditProviders()">Save to Config</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>Delete Model</h3>
+    <p>Are you sure you want to remove <strong id="delete-model-name"></strong> from the config? This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete-btn" onclick="doDeleteModel()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete All Logs confirm modal -->
+<div class="modal-overlay" id="delete-logs-modal">
+  <div class="modal">
+    <h3>🗑 Delete All Logs</h3>
+    <p>This will delete <strong>ALL</strong> your logs (current and rotated versions), including the proxy activity log and application log. This action is permanent and <strong>cannot be undone</strong>.</p>
+    <p>Are you sure to proceed?</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeDeleteLogsModal()">NO</button>
+      <button class="btn btn-danger" id="confirm-delete-logs-btn" onclick="doDeleteAllLogs()">YES, DELETE</button>
+    </div>
+  </div>
+</div>
 <div id="toast-container"></div>
 
 <!-- ============================================================
@@ -363,7 +517,7 @@ body {
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent-hover)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      <h1>ORBP</h1>
+      <h1>OpenRouter Better Proxy</h1>
     </div>
     <nav class="sidebar-nav">
       <a class="nav-item active" data-section="dashboard" onclick="switchSection('dashboard')">
@@ -372,13 +526,31 @@ body {
       </a>
       <a class="nav-item" data-section="config" onclick="switchSection('config')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        Configuration
+        Models
+      </a>
+      <a class="nav-item" data-section="proxysettings" onclick="switchSection('proxysettings')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+        Proxy Settings
       </a>
       <a class="nav-item" data-section="services" onclick="switchSection('services')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/></svg>
-        Service Controls
-      </a>
-    </nav>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/></svg>
+              Service Controls
+            </a>
+            <a class="nav-item" data-section="logs" onclick="switchSection('logs')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Activity Log
+            </a>
+            <a class="nav-item" data-section="realtime" onclick="switchSection('realtime')" id="nav-realtime" style="display:none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Proxy Log
+            </a>
+          </nav>
+          <div style="padding:12px 8px;border-top:1px solid var(--border);">
+            <a class="nav-item" href="https://github.com/rafpigna/openrouter-better-proxy" target="_blank" rel="noopener">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+              GitHub
+            </a>
+          </div>
   </aside>
 
   <!-- Main -->
@@ -408,18 +580,13 @@ body {
           <div class="card"><div class="card-label">Errors</div><div class="card-value red" id="ov-errors">—</div></div>
         </div>
 
-        <div class="polling-row">
-          <label>Polling:</label>
-          <input type="range" id="poll-slider" min="5" max="60" step="5" value="15"
-                 oninput="setPollInterval(this.value)">
-          <span class="poll-value" id="poll-label">15s</span>
-        </div>
+        
 
         <div class="widgets-grid">
           <div class="widget">
             <div class="widget-title">System</div>
             <div class="widget-row"><span>Hostname</span><span id="sys-hostname">—</span></div>
-            <div class="widget-row"><span>Platform</span><span id="sys-platform">—</span></div>
+            <div class="widget-row"><span>Uptime</span><span id="sys-uptime">—</span></div>
             <div class="widget-row"><span>Boot time</span><span id="sys-boot">—</span></div>
           </div>
           <div class="widget">
@@ -447,18 +614,67 @@ body {
             <div class="widget-row"><span>Sessions</span><span id="proxy-sessions">0</span></div>
             <div class="widget-row"><span>Cooldown</span><span id="proxy-cooldown">0</span></div>
             <div class="widget-row"><span>Migration</span><span id="proxy-migration">—</span></div>
+            <div class="widget-row"><span>Next refresh</span><span id="proxy-next-refresh">—</span></div>
           </div>
         </div>
 
-        <div class="log-area">
+                <div class="recent-box" id="recent-box">
+                  <div class="recent-header">
+                    <h3>Activity Log <span style="font-size:0.7rem;color:var(--text-muted);font-weight:normal;">(polling)</span></h3>
+                    <div class="recent-ctrl">
+                      <span style="font-size:0.75rem;color:var(--text-muted);">Auto refresh: </span><select id="recent-poll-select" onchange="setRecentPollInterval(this.value)">
+                        <option value="3">3s</option>
+                        <option value="5">5s</option>
+                        <option value="10">10s</option>
+                        <option value="20">20s</option>
+                        <option value="30">30s</option>
+                        <option value="60">60s</option>
+                      </select>
+                      <button class="btn btn-sm btn-outline" onclick="fetchRecentLogs()">Refresh</button>
+                      <span class="col-btn" onclick="toggleColDropdown()" title="Select columns"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+                        <div class="col-dropdown" id="col-dropdown">
+                          <label><input type="checkbox" data-col="time" checked> Time</label>
+                          <label><input type="checkbox" data-col="model" checked> Model</label>
+                          <label><input type="checkbox" data-col="provider" checked> Provider</label>
+                          <label><input type="checkbox" data-col="resp" checked> Resp Provider</label>
+                          <label><input type="checkbox" data-col="tier" checked> Tier</label>
+                          <label><input type="checkbox" data-col="tokens" checked> Tokens</label>
+                          <label><input type="checkbox" data-col="cache" checked> Cache</label>
+                          <label><input type="checkbox" data-col="cost" checked> Cost</label>
+                          <label><input type="checkbox" data-col="latency" checked> Latency</label>
+                          <label><input type="checkbox" data-col="status" checked> Status</label>
+                          <label><input type="checkbox" data-col="session" checked> Session</label>
+                        </div>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="logs-filters-bar" style="border-radius:0;border-top:1px solid var(--border);">
+                    <select id="recent-filter-model"><option value="">All Models</option></select>
+                    <select id="recent-filter-provider"><option value="">All Providers</option></select>
+                    <select id="recent-filter-resp"><option value="">All Resp Providers</option></select>
+                    <select id="recent-filter-tier"><option value="">All Tiers</option></select>
+                    <input type="text" id="recent-filter-session" placeholder="Session" style="width:110px;">
+                    <button class="btn btn-sm btn-primary" onclick="applyRecentFilters()">Apply</button>
+                    <button class="btn btn-sm btn-outline" onclick="resetRecentFilters()">Reset</button>
+                  </div>
+                  <div class="recent-wrap" id="recent-wrap">
+                    <div class="recent-empty" id="recent-empty">No recent activity.</div>
+                    <table class="data-table" id="recent-table" style="display:none;">
+                      <thead><tr id="recent-head"></tr></thead>
+                      <tbody id="recent-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="log-area" id="live-log-box">
           <div class="log-header">
-            <h3>📋 Live Log</h3>
+            <h3>📋 Proxy Log (live)</h3>
             <span class="log-count" id="log-count">0 entries</span>
           </div>
           <div class="log-container" id="log-container"></div>
           <div class="log-bar">
             <button class="btn btn-outline btn-sm" onclick="clearLog()">Clear</button>
-            <span style="font-size:0.75rem;color:var(--text-dim);margin-left:auto;" id="log-status">🟢 connected</span>
+            <span style="font-size:0.8rem;color:var(--green);font-weight:600;margin-left:auto;" id="log-status">🟢 connected</span>
           </div>
         </div>
 
@@ -466,16 +682,12 @@ body {
           <button class="btn btn-primary" id="btn-refresh-dash" onclick="triggerRefresh()">
             🔄 Refresh Prices
           </button>
-          <button class="btn btn-danger" onclick="openModal()">
-            ⚠️ Restart Service
-          </button>
         </div>
       </section>
 
       <!-- ============ CONFIG SECTION ============ -->
       <section id="section-config" class="section">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-          <h2 style="margin:0">Configuration Editor</h2>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
           <div style="display:flex;gap:8px;">
             <button class="btn btn-outline" onclick="toggleRawYaml()" id="btn-toggle-raw">📄 View Raw YAML</button>
             <button class="btn btn-primary" id="btn-save-config" onclick="saveConfig()">💾 Save Changes</button>
@@ -494,9 +706,73 @@ body {
         </div>
       </section>
 
-      <!-- ============ SERVICE CONTROLS SECTION ============ -->
-      <section id="section-services" class="section">
-        <h2 style="margin-bottom:16px;">Service Controls</h2>
+            <!-- ============ LOGS SECTION ============ -->
+            <section id="section-logs" class="section">
+              <div class="logs-filters-bar">
+                <select id="log-filter-model"><option value="">All Models</option></select>
+                <select id="log-filter-provider"><option value="">All Providers</option></select>
+          <select id="log-filter-resp"><option value="">All Resp Providers</option></select>
+                <select id="log-filter-status"><option value="">All Status</option></select>
+                <input type="text" id="log-filter-session" placeholder="Session ID" style="width:130px;">
+                <input type="date" id="log-filter-from" style="width:130px;">
+                <input type="date" id="log-filter-to" style="width:130px;">
+                <button class="btn btn-sm btn-primary" onclick="applyLogFilters()">Apply Filters</button>
+                <button class="btn btn-sm btn-outline" onclick="resetLogFilters()">Reset</button>
+              </div>
+              <div class="log-table-wrap">
+                <table class="data-table" id="logs-table">
+                  <thead><tr><th>#</th><th>Time</th><th>Model</th><th>Provider</th><th>Resp</th><th>Tier</th><th>Tok I/O</th><th>Cost</th><th>Status</th><th>Latency</th><th>Session</th></tr></thead>
+                  <tbody id="logs-tbody"></tbody>
+                </table>
+                <div class="logs-empty" id="logs-empty">No log entries. Make some proxy requests first.</div>
+              </div>
+              <div class="logs-footer">
+                <div class="logs-pagination">
+                  <button class="btn btn-sm btn-outline" id="logs-prev" onclick="logsPrevPage()" disabled>Prev</button>
+                  <span id="logs-page-info">Page 1</span>
+                  <button class="btn btn-sm btn-outline" id="logs-next" onclick="logsNextPage()">Next</button>
+                  <button class="btn btn-sm btn-outline" onclick="logsRefresh()">Refresh</button>
+                </div>
+                <div class="logs-download">
+                  <span style="font-size:0.75rem;color:var(--text-muted);">Download:</span>
+                  <label class="radio-label"><input type="radio" name="log-format" value="jsonl" checked> JSONL</label>
+                  <label class="radio-label"><input type="radio" name="log-format" value="csv"> CSV</label>
+                  <label class="radio-label"><input type="radio" name="log-format" value="txt"> TXT</label>
+                  <button class="btn btn-sm btn-primary" onclick="logsDownload()">Download</button>
+                </div>
+                <div style="font-size:0.78rem;color:var(--green);font-weight:600;width:100%;margin-top:2px;">Note: downloads the FULL unfiltered log saved on disk, converted to the selected format (file up to ~10MB).</div>
+              </div>
+            </section>
+
+            <!-- ============ REALTIME LOG SECTION ============ -->
+            <section id="section-realtime" class="section">
+              <div class="log-area">
+                <div class="log-header">
+                  <h3>📋 Proxy Log (live)</h3>
+                  <span class="log-count" id="rt-log-count">0 entries</span>
+                </div>
+                <div class="log-container" id="rt-log-container" style="height:500px;"></div>
+                <div class="log-bar">
+                  <button class="btn btn-outline btn-sm" onclick="clearRtLog()">Clear</button>
+                  <span style="font-size:0.8rem;color:var(--green);font-weight:600;margin-left:auto;" id="rt-log-status">connected</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============ SERVICE CONTROLS SECTION ============ -->
+            <!-- ============ PROXY SETTINGS SECTION ============ -->
+      <section id="section-proxysettings" class="section">
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+          <button class="btn btn-outline" onclick="toggleRawYaml()" id="btn-toggle-raw-ps">📄 View Raw YAML</button>
+          <button class="btn btn-primary" id="btn-save-config-ps" onclick="saveConfig()">💾 Save Changes</button>
+        </div>
+        <div class="config-form" id="proxysettings-form">
+          <p style="color:var(--text-muted);font-size:0.85rem;">Loading proxy settings...</p>
+        </div>
+        <div style="margin-top:24px;font-size:0.8rem;color:var(--text-muted);">For detailed user guides please visit <a href="https://github.com/rafpigna/openrouter-better-proxy" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">github.com/rafpigna/openrouter-better-proxy</a></div>
+      </section>
+
+<section id="section-services" class="section">
 
         <div class="card" style="padding:20px;">
           <div class="status-card">
@@ -526,9 +802,15 @@ body {
         </div>
 
         <div class="actions-bar">
-          <button class="btn btn-primary" id="btn-refresh-svc" onclick="triggerRefresh()">🔄 Refresh Prices</button>
-          <button class="btn btn-danger" onclick="openModal()">⚠️ Restart Service</button>
-        </div>
+                  <button class="btn btn-primary" id="btn-refresh-svc" onclick="triggerRefresh()">Refresh Prices</button>
+                  <button class="btn btn-danger" onclick="openModal()">Restart Service</button>
+                  <button class="btn btn-outline" onclick="exportConfig()">Export Config</button>
+                  <span class="import-btn-wrap">
+                    <button class="btn btn-outline" onclick="this.nextElementSibling.click()">Import Config</button>
+                    <input type="file" accept=".yaml,.yml" onchange="importConfig(this)">
+                  </span>
+                  <button class="btn btn-danger btn-outline" onclick="openDeleteLogsModal()">🗑 Delete All Logs</button>
+                </div>
 
         <div class="card" style="padding:20px;margin-top:16px;">
           <h3 style="font-size:0.9rem;margin-bottom:12px;">Migration Log (last 10)</h3>
@@ -536,13 +818,13 @@ body {
             <div class="mig-empty">No migration events yet.</div>
           </div>
         </div>
+        <div style="margin-top:24px;font-size:0.8rem;color:var(--text-muted);">For detailed user guides please visit <a href="https://github.com/rafpigna/openrouter-better-proxy" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">github.com/rafpigna/openrouter-better-proxy</a></div>
       </section>
     </div>
 
     <!-- Footer -->
     <div class="footer">
-      <span>OpenRouter Better Proxy <span id="footer-version">v0.1.0</span></span>
-      <span id="footer-uptime">Uptime: —</span>
+      <span style="font-weight:700;color:var(--text);font-size:0.8rem;">OpenRouter Better Proxy <span id="footer-version">v0.1.0</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.75rem;">by Raffaele Pignataro - rafpigna</span></span>
     </div>
   </div>
 </div>
@@ -551,706 +833,179 @@ body {
      JavaScript
      ============================================================ -->
 <script>
-/* ================================================================
-   State
-   ================================================================ */
-let pollTimer = null;
-let pollIntervalMs = 15000;        // default 15s
-let configData = null;             // parsed config object
-let rawYamlText = '';              // raw YAML text
-let rawYamlVisible = false;
-let currentModels = {};            // active model configs
-let logEntryCount = 0;
-let eventSource = null;
-
-/* ================================================================
-   Utility: toast
-   ================================================================ */
-function toast(msg, type='info', duration=4000) {
-  const c = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  el.className = 'toast toast-' + type;
-  el.innerHTML = '<span>'+escHtml(msg)+'</span><button class="toast-close" onclick="this.parentElement.remove()">✕</button>';
-  c.appendChild(el);
-  if (duration > 0) setTimeout(() => el.remove(), duration);
-}
-
-function escHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-/* ================================================================
-   Sidebar / Navigation
-   ================================================================ */
-function switchSection(id) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+/* State */
+let pollTimer=null,pollIntervalMs=15000,configData=null,rawYamlText='',rawYamlVisible=false,currentModels={},logEntryCount=0,eventSource=null,recentLogTimer=null,catalogData=null,editModelId=null,addSelectedProviders=[],editSelectedProviders=[],logsPage=0,logsAllData=[],timerTimesCache=null,deleteModelId=null,recentCols=['time','model','provider','resp','tier','tokens','cache','cost','latency','status','session'];
+const LPP=50;
+let recentLogsData=[],recentFilters={model:'',provider:'',resp:'',tier:'',session:''},logsFilters={model:'',provider:'',resp:'',status:'',session:'',from:'',to:''},logsAllFiltered=[],editEps=[];
+function toast(msg,t,d){t=t||'info';d=d||4000;const c=document.getElementById('toast-container'),el=document.createElement('div');el.className='toast toast-'+t;el.innerHTML='<span>'+escHtml(msg)+'</span><button class="toast-close" onclick="this.parentElement.remove()">x</button>';c.appendChild(el);if(d>0)setTimeout(()=>el.remove(),d);}
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function switchSection(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('section-'+id).classList.add('active');
   document.querySelector('.nav-item[data-section="'+id+'"]').classList.add('active');
-  document.getElementById('page-title').textContent =
-    id === 'dashboard' ? 'Dashboard' : id === 'config' ? 'Configuration' : 'Service Controls';
-  // close sidebar on mobile
+  const ts={dashboard:'Dashboard',config:'Models',proxysettings:'Proxy Settings',services:'Service Controls',logs:'Activity Log',realtime:'Proxy Log'};
+  document.getElementById('page-title').textContent=ts[id]||id;
   document.getElementById('sidebar').classList.remove('open');
-  // refresh data for the active section
-  if (id === 'config') loadConfigEditor();
-  if (id === 'services') refreshServiceStatus();
+  if(id==='config'||id==='proxysettings')loadConfigEditor();if(id==='services')refreshServiceStatus();if(id==='logs')fetchLogs();
 }
-
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');}
+function updateOverview(d){
+  document.getElementById('ov-models').textContent=(d.cached_models?d.cached_models.length:0)||'0';
+  document.getElementById('ov-sessions').textContent=d.sessions?Object.keys(d.sessions).length:0;
+  document.getElementById('ov-providers').textContent=d.backoff?Object.keys(d.backoff).length:0;
 }
-
-/* ================================================================
-   Overview cards (from /api/status)
-   ================================================================ */
-function updateOverview(data) {
-  const models = data.cached_models ? data.cached_models.length : 0;
-  const sessions = data.sessions ? Object.keys(data.sessions).length : 0;
-  // count unique providers across backoff
-  let providers = 0;
-  if (data.backoff) providers = Object.keys(data.backoff).length;
-
-  document.getElementById('ov-models').textContent = models || '0';
-  document.getElementById('ov-sessions').textContent = sessions;
-  document.getElementById('ov-providers').textContent = providers;
-  // errors from proxy metrics if available
+function fetchSystem(){
+  fetch('/api/system').then(r=>r.json()).then(d=>{
+    document.getElementById('sys-hostname').textContent=d.os.hostname||'--';
+    document.getElementById('sys-boot').textContent=d.os.boot_time?fmtBt(d.os.boot_time):'--';
+    const m=d.memory;document.getElementById('ram-total').textContent=m.total_gb+' GB';
+    document.getElementById('ram-used').textContent=(m.total_gb-m.available_gb).toFixed(2)+' GB / '+m.percent+'%';
+    document.getElementById('ram-bar').style.width=Math.min(m.percent,100)+'%';
+    const c=d.cpu;document.getElementById('cpu-pct').textContent=c.percent+'%';
+    document.getElementById('cpu-bar').style.width=Math.min(c.percent,100)+'%';
+    document.getElementById('cpu-cores').textContent=c.count||'--';
+    const disk=d.disk;if(disk){document.getElementById('disk-total').textContent=disk.total_gb+' GB';
+    document.getElementById('disk-used').textContent=(disk.used_gb||disk.total_gb-disk.free_gb).toFixed(1)+' GB / '+disk.percent+'%';
+    document.getElementById('disk-bar').style.width=Math.min(disk.percent,100)+'%';}
+    const px=d.proxy;if(px){document.getElementById('proxy-requests').textContent=px.total_requests||0;
+    document.getElementById('proxy-errors').textContent=px.total_errors||0;
+    document.getElementById('proxy-sessions').textContent=px.active_sessions||0;
+    document.getElementById('proxy-cooldown').textContent=px.providers_in_cooldown||0;
+    document.getElementById('proxy-migration').textContent=px.migration_enabled?'on':'off';
+    document.getElementById('ov-errors').textContent=px.total_errors||0;}
+  }).catch(()=>{});
 }
-
-/* ================================================================
-   System metrics polling (/api/system)
-   ================================================================ */
-function fetchSystem() {
-  fetch('/api/system')
-    .then(r => r.json())
-    .then(data => {
-      // OS
-      document.getElementById('sys-hostname').textContent = data.os.hostname || '—';
-      document.getElementById('sys-platform').textContent = data.os.platform || '—';
-      document.getElementById('sys-boot').textContent = data.os.boot_time ? fmtBoot(data.os.boot_time) : '—';
-
-      // RAM
-      const mem = data.memory;
-      document.getElementById('ram-total').textContent = mem.total_gb + ' GB';
-      document.getElementById('ram-used').textContent = (mem.total_gb - mem.available_gb).toFixed(2) + ' GB used / ' + mem.percent + '%';
-      document.getElementById('ram-bar').style.width = Math.min(mem.percent, 100) + '%';
-
-      // CPU
-      const cpu = data.cpu;
-      document.getElementById('cpu-pct').textContent = cpu.percent + '%';
-      document.getElementById('cpu-bar').style.width = Math.min(cpu.percent, 100) + '%';
-      document.getElementById('cpu-cores').textContent = cpu.count || '—';
-
-      // Disk
-      const disk = data.disk;
-      if (disk) {
-        document.getElementById('disk-total').textContent = disk.total_gb + ' GB';
-        document.getElementById('disk-used').textContent = (disk.used_gb || disk.total_gb - disk.free_gb).toFixed(1) + ' GB / ' + disk.percent + '%';
-        document.getElementById('disk-bar').style.width = Math.min(disk.percent, 100) + '%';
-      }
-
-      // Proxy
-      const px = data.proxy;
-      if (px) {
-        document.getElementById('proxy-requests').textContent = px.total_requests || 0;
-        document.getElementById('proxy-errors').textContent = px.total_errors || 0;
-        document.getElementById('proxy-sessions').textContent = px.active_sessions || 0;
-        document.getElementById('proxy-cooldown').textContent = px.providers_in_cooldown || 0;
-        document.getElementById('proxy-migration').textContent = px.migration_enabled ? '✅ on' : '⛔ off';
-        // also update overview errors card
-        document.getElementById('ov-errors').textContent = px.total_errors || 0;
-      }
-    })
-    .catch(err => {
-      // silent — may be restarting
-    });
-}
-
-function fmtBoot(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch(e) { return iso; }
-}
-
-function setPollInterval(seconds) {
-  seconds = parseInt(seconds) || 15;
-  document.getElementById('poll-label').textContent = seconds + 's';
-  pollIntervalMs = seconds * 1000;
-  if (pollTimer) clearInterval(pollTimer);
-  fetchSystem();
-  pollTimer = setInterval(fetchSystem, pollIntervalMs);
-}
-
-/* ================================================================
-   SSE Live Log
-   ================================================================ */
-function connectSSE() {
-  if (eventSource) { eventSource.close(); }
-  eventSource = new EventSource('/api/logs');
-
-  eventSource.onmessage = (e) => {
-    try {
-      const d = JSON.parse(e.data);
-      appendLog(d.t || '', d.m || e.data);
-    } catch {
-      appendLog('', e.data);
-    }
-  };
-
-  eventSource.onerror = () => {
-    document.getElementById('log-status').textContent = '🔴 disconnected, retrying...';
-    // Refresh system+status data optimistically — il server potrebbe già essere tornato
-    fetchSystem();
-    fetchStatus();
-    eventSource.close();
-    eventSource = null;
-    setTimeout(connectSSE, 3000);
-  };
-
-  eventSource.onopen = () => {
-    document.getElementById('log-status').textContent = '🟢 connected';
-    // Dopo riconnessione SSE, refresh completo dei dati dashboard
-    fetchSystem();
-    fetchStatus();
-  };
-}
-
-function appendLog(time, msg) {
-  const container = document.getElementById('log-container');
-  const entry = document.createElement('div');
-  entry.className = 'log-entry';
-
-  // Extract level from msg: "2026-08-24 [LEVEL] ..."
-  let level = 'INFO';
-  const levelMatch = msg.match(/\[(INFO|WARNING|WARN|ERROR|CRITICAL|DEBUG)\]/);
-  if (levelMatch) level = levelMatch[1];
-
-  // Color by level
-  let levelCls = 'log-INFO';
-  if (level === 'WARNING' || level === 'WARN') levelCls = 'log-WARNING';
-  else if (level === 'ERROR' || level === 'CRITICAL') levelCls = 'log-ERROR';
-  else if (level === 'DEBUG') levelCls = 'log-DEBUG';
-
-  entry.innerHTML = '<span class="log-time">'+escHtml(time)+'</span><span class="'+levelCls+'">'+escHtml(msg)+'</span>';
-  container.appendChild(entry);
-  container.scrollTop = container.scrollHeight;
-
-  logEntryCount++;
-  document.getElementById('log-count').textContent = logEntryCount + ' entries';
-
-  // trim to last 500
-  while (container.children.length > 500) container.removeChild(container.firstChild);
-}
-
-function clearLog() {
-  document.getElementById('log-container').innerHTML = '';
-  logEntryCount = 0;
-  document.getElementById('log-count').textContent = '0 entries';
-}
-
-/* ================================================================
-   Quick actions (Refresh + Restart)
-   ================================================================ */
-function triggerRefresh() {
-  const btn = document.getElementById('btn-refresh-dash') || document.getElementById('btn-refresh-svc');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Refreshing...';
-
-  fetch('/api/refresh', { method:'POST' })
-    .then(r => r.json())
-    .then(data => {
-      toast('Refresh completed: ' + (data.message || 'ok'), 'success');
-    })
-    .catch(err => {
-      toast('Refresh failed: ' + (err.message || 'connection error — the service may be down'), 'error');
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = '🔄 Refresh Prices';
-    });
-}
-
-function openModal() {
-  document.getElementById('restart-modal').classList.add('open');
-}
-
-function closeModal() {
-  document.getElementById('restart-modal').classList.remove('open');
-}
-
-function doRestart() {
-  closeModal();
-  const btn = document.getElementById('confirm-restart-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Restarting...';
-
-  fetch('/api/restart', { method:'POST' })
-    .then(r => r.json())
-    .then(data => {
-      toast('Service restarting in 500ms...', 'info', 8000);
-    })
-    .catch(err => {
-      // connection reset is EXPECTED — the server died
-      toast('Service is restarting (expected). Reconnecting...', 'info', 5000);
-    })
-    .finally(() => {
-      setTimeout(() => { btn.disabled = false; btn.innerHTML = 'Restart Now'; }, 2000);
-    });
-}
-
-/* ================================================================
-   Status refresh (header + service page)
-   ================================================================ */
-function refreshHeaderStatus(data) {
-  const svc = data.service;
-  if (svc) {
-    const online = svc.uptime_seconds != null && svc.uptime_seconds > 0;
-    document.getElementById('status-dot').className = 'status-dot ' + (online ? 'online' : 'offline');
-    document.getElementById('status-label').textContent = online ? 'Online' : 'Offline';
-    document.getElementById('header-version').textContent = svc.version || '';
-    formatUptime(svc.uptime_seconds);
-  }
-}
-
-function formatUptime(secs) {
-  if (secs == null) { document.getElementById('footer-uptime').textContent = 'Uptime: —'; return; }
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  const str = 'Uptime: ' + h + 'h ' + m + 'm ' + s + 's';
-  document.getElementById('footer-uptime').textContent = str;
-}
-
-function fetchStatus() {
-  fetch('/api/status')
-    .then(r => r.json())
-    .then(data => {
-      updateOverview(data);
-      refreshHeaderStatus(data);
-      // also update service page if visible
-      updateServicePage(data);
-    })
-    .catch(() => {
-      document.getElementById('status-dot').className = 'status-dot offline';
-      document.getElementById('status-label').textContent = 'Offline';
-    });
-}
-
-/* ================================================================
-   Service Controls page
-   ================================================================ */
-function refreshServiceStatus() {
-  fetch('/api/status')
-    .then(r => r.json())
-    .then(data => updateServicePage(data))
-    .catch(() => {});
-}
-
-function updateServicePage(data) {
-  const svc = data.service;
-  if (!svc) return;
-
-  const online = svc.uptime_seconds != null && svc.uptime_seconds > 0;
-  document.getElementById('svc-dot').className = 'status-dot ' + (online ? 'online' : 'offline');
-  document.getElementById('svc-status').textContent = online ? 'Running' : 'Stopped';
-  document.getElementById('svc-uptime').textContent = fmtUptime(svc.uptime_seconds);
-  document.getElementById('svc-dashboard').textContent = svc.dashboard ? '✅ Enabled' : '⛔ Disabled';
-  document.getElementById('svc-version').textContent = svc.version || '—';
-  document.getElementById('footer-version').textContent = svc.version || 'v0.1.0';
-
-  const sched = data.scheduler;
-  if (sched) {
-    document.getElementById('svc-scheduler').textContent = sched.running ? '✅ Active' : '⛔ Inactive';
-  }
-
-  // Migration log
-  const mig = data.migration;
-  if (mig && mig.last_events && mig.last_events.length > 0) {
-    renderMigrationLog(mig.last_events);
-  }
-}
-
-function fmtUptime(secs) {
-  if (secs == null || secs === 0) return '—';
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
-  if (m > 0) return m + 'm ' + s + 's';
-  return s + 's';
-}
-
-function renderMigrationLog(events) {
-  const c = document.getElementById('migration-log-container');
-  if (!events || events.length === 0) {
-    c.innerHTML = '<div class="mig-empty">No migration events yet.</div>';
-    return;
-  }
-  let html = '<table class="mig-table"><thead><tr><th>Timestamp</th><th>Session</th><th>From → To</th></tr></thead><tbody>';
-  events.forEach(ev => {
-    const ts = ev.timestamp || ev.time || '—';
-    const sid = ev.session_id || '—';
-    const from = ev.from || ev.old_provider || '—';
-    const to = ev.to || ev.new_provider || '—';
-    html += '<tr><td class="nowrap">'+escHtml(ts)+'</td><td>'+escHtml(sid)+'</td><td>'+escHtml(from)+' → '+escHtml(to)+'</td></tr>';
+function fmtBt(iso){try{return new Date(iso).toLocaleString();}catch(e){return iso;}}
+function fmtUp(s){if(s==null||s===0)return'--';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),se=s%60;if(h>0)return h+'h '+m+'m';if(m>0)return m+'m '+se+'s';return se+'s';}
+function setPollInterval(s){s=parseInt(s)||15;document.getElementById('poll-label').textContent=s+'s';pollIntervalMs=s*1000;if(pollTimer)clearInterval(pollTimer);fetchSystem();pollTimer=setInterval(fetchSystem,pollIntervalMs);}
+function connectSSE(){if(eventSource)eventSource.close();eventSource=new EventSource('/api/logs');eventSource.onmessage=e=>{try{const d=JSON.parse(e.data);appendLog(d.t||'',d.m||e.data);}catch{appendLog('',e.data);}};eventSource.onerror=()=>{document.getElementById('log-status').textContent='disconnected';document.getElementById('rt-log-status').textContent='disconnected';fetchSystem();fetchStatus();eventSource.close();eventSource=null;setTimeout(connectSSE,3000);};eventSource.onopen=()=>{document.getElementById('log-status').textContent='connected';document.getElementById('rt-log-status').textContent='connected';fetchSystem();fetchStatus();};}
+function appendLog(time,msg){for(const cid of['log-container','rt-log-container']){const container=document.getElementById(cid);if(!container)continue;const entry=document.createElement('div');entry.className='log-entry';let level='INFO';const m=msg.match(/\[(INFO|WARNING|WARN|ERROR|CRITICAL|DEBUG)\]/);if(m)level=m[1];let cls='log-INFO';if(level==='WARNING'||level==='WARN')cls='log-WARNING';else if(level==='ERROR'||level==='CRITICAL')cls='log-ERROR';else if(level==='DEBUG')cls='log-DEBUG';entry.innerHTML='<span class="log-time">'+escHtml(time)+'</span><span class="'+cls+'">'+escHtml(msg)+'</span>';container.appendChild(entry);container.scrollTop=container.scrollHeight;}logEntryCount++;document.getElementById('log-count').textContent=logEntryCount+' entries';document.getElementById('rt-log-count').textContent=logEntryCount+' entries';}
+function clearLog(){document.getElementById('log-container').innerHTML='';logEntryCount=0;document.getElementById('log-count').textContent='0 entries';}
+function clearRtLog(){document.getElementById('rt-log-container').innerHTML='';}
+function triggerRefresh(){const btn=document.getElementById('btn-refresh-dash')||document.getElementById('btn-refresh-svc');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Refreshing...';fetch('/api/refresh',{method:'POST'}).then(r=>r.json()).then(d=>{toast('Refresh: '+(d.message||'ok'),'success');}).catch(e=>{toast('Refresh failed','error');}).finally(()=>{btn.disabled=false;btn.innerHTML='Refresh Prices';});}
+function openModal(){document.getElementById('restart-modal').classList.add('open');}
+function closeModal(){document.getElementById('restart-modal').classList.remove('open');}
+function doRestart(){closeModal();const btn=document.getElementById('confirm-restart-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Restarting...';fetch('/api/restart',{method:'POST'}).then(r=>r.json()).then(d=>{toast('Restarting in 500ms...','info',8000);}).catch(e=>{toast('Restarting (connection reset)','info',5000);}).finally(()=>{setTimeout(()=>{btn.disabled=false;btn.innerHTML='Restart Now';},2000);});}
+function refreshHeaderStatus(d){const s=d.service;if(!s)return;const on=s.uptime_seconds!=null&&s.uptime_seconds>0;document.getElementById('status-dot').className='status-dot '+(on?'online':'offline');document.getElementById('status-label').textContent=on?'Online':'Offline';document.getElementById('header-version').textContent=s.version||'';document.getElementById('sys-uptime').textContent=on?fmtUp(s.uptime_seconds):'--';}
+function fetchStatus(){fetch('/api/status').then(r=>r.json()).then(d=>{updateOverview(d);refreshHeaderStatus(d);updateServicePage(d);}).catch(()=>{document.getElementById('status-dot').className='status-dot offline';document.getElementById('status-label').textContent='Offline';});}
+function refreshServiceStatus(){fetch('/api/status').then(r=>r.json()).then(d=>updateServicePage(d)).catch(()=>{});}
+function updateServicePage(d){const s=d.service;if(!s)return;const on=s.uptime_seconds!=null&&s.uptime_seconds>0;document.getElementById('svc-dot').className='status-dot '+(on?'online':'offline');document.getElementById('svc-status').textContent=on?'Running':'Stopped';document.getElementById('svc-uptime').textContent=fmtUp(s.uptime_seconds);document.getElementById('svc-dashboard').textContent=s.dashboard?'Enabled':'Disabled';document.getElementById('svc-version').textContent=s.version||'--';document.getElementById('footer-version').textContent=s.version||'v0.1.0';if(d.scheduler){document.getElementById('svc-scheduler').textContent=d.scheduler.running?'Active':'Inactive';if(d.scheduler.next_refresh){const nr=new Date(d.scheduler.next_refresh);document.getElementById('proxy-next-refresh').textContent=nr.toLocaleDateString()+' '+nr.toLocaleTimeString();}else{document.getElementById('proxy-next-refresh').textContent='--';}}const mig=d.migration;if(mig&&mig.last_events&&mig.last_events.length)renderMig(mig.last_events);}
+function renderMig(ev){const c=document.getElementById('migration-log-container');if(!ev||!ev.length){c.innerHTML='<div class="mig-empty">No migration events yet.</div>';return;}let h='<table class="mig-table"><thead><tr><th>Timestamp</th><th>Session</th><th>From->To</th></tr></thead><tbody>';ev.forEach(e=>{h+='<tr><td>'+(e.timestamp||'--')+'</td><td>'+(e.session_id||'--')+'</td><td>'+(e.from||'--')+' -> '+(e.to||'--')+'</td></tr>';});h+='</tbody></table>';c.innerHTML=h;}
+function toggleColDropdown(){document.getElementById('col-dropdown').classList.toggle('show');}
+function initRecentCols(){const defaults=['time','model','provider','resp','tier','tokens','cache','cost','latency','status','session'];let saved=null;try{saved=JSON.parse(localStorage.getItem('orbp_recent_cols_v2'));}catch(e){}if(!Array.isArray(saved)||!saved.length){saved=defaults;}const savedSet=new Set(saved);recentCols=defaults.filter(d=>savedSet.has(d));saved.forEach(x=>{if(!defaults.includes(x))recentCols.push(x);});document.querySelectorAll('#col-dropdown input[type=checkbox]').forEach(cb=>{cb.checked=recentCols.includes(cb.dataset.col);});try{const v=localStorage.getItem('orbp_recent_interval');if(v)document.getElementById('recent-poll-select').value=v;}catch(e){}}
+function saveRecentCols(){const cols=[];document.querySelectorAll('#col-dropdown input[type=checkbox]').forEach(cb=>{if(cb.checked)cols.push(cb.dataset.col);});recentCols=cols;localStorage.setItem('orbp_recent_cols_v2',JSON.stringify(cols));renderRecentHead();}
+function renderRecentHead(){const nm={time:'Time',model:'Model',provider:'Provider',resp:'Resp Prov',tier:'Tier',tokens:'Tok I/O',cache:'Cache',cost:'Cost',latency:'Latency',status:'Status',session:'Session'};const head=document.getElementById('recent-head');if(!head)return;let h='';recentCols.forEach(c=>{h+='<th>'+escHtml(nm[c]||c)+'</th>';});head.innerHTML=h;}
+function fetchRecentLogs(){fetch('/api/logs/recent?limit=200').then(r=>r.json()).then(d=>{recentLogsData=(d.data||[]).reverse();populateRecentFilters();renderRecentTable();}).catch(()=>{});}
+function fmtTime(ts){if(!ts)return'--';try{return new Date(ts).toLocaleTimeString();}catch(e){return ts;}}
+function fillSelect(id,items,placeholder){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;let h='<option value="">'+escHtml(placeholder)+'</option>';items.forEach(v=>{h+='<option value="'+escHtml(v)+'">'+escHtml(v)+'</option>';});sel.innerHTML=h;if(cur)sel.value=cur;}
+function populateRecentFilters(){const uniq=a=>[...new Set(a.filter(Boolean))].sort();fillSelect('recent-filter-model',uniq(recentLogsData.map(l=>l.model)),'All Models');fillSelect('recent-filter-provider',uniq(recentLogsData.map(l=>l.provider)),'All Providers');fillSelect('recent-filter-resp',uniq(recentLogsData.map(l=>l.provider_response)),'All Resp Providers');fillSelect('recent-filter-tier',uniq(recentLogsData.map(l=>l.tier)),'All Tiers');}
+function renderRecentTable(){
+  const f=recentFilters;
+  const logs=recentLogsData.filter(l=>{
+    if(f.model&&l.model!==f.model)return false;
+    if(f.provider&&l.provider!==f.provider)return false;
+    if(f.resp&&(l.provider_response||'')!==f.resp)return false;
+    if(f.tier&&l.tier!==f.tier)return false;
+    if(f.session&&!(l.session_id||'').includes(f.session))return false;
+    return true;
   });
-  html += '</tbody></table>';
-  c.innerHTML = html;
-}
-
-/* ================================================================
-   Configuration Editor
-   ================================================================ */
-function loadConfigEditor() {
-  const form = document.getElementById('config-form');
-  form.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading configuration...</p>';
-
-  fetch('/api/config')
-    .then(r => r.json())
-    .then(data => {
-      configData = data;
-      renderConfigForm(data);
-    })
-    .catch(err => {
-      form.innerHTML = '<p style="color:var(--red);">Failed to load config: ' + escHtml(err.message) + '</p>';
+  const tb=document.getElementById('recent-tbody'),em=document.getElementById('recent-empty'),ta=document.getElementById('recent-table');
+  if(!logs.length){em.style.display='block';ta.style.display='none';return;}
+  em.style.display='none';ta.style.display='';
+  let h='';
+  logs.slice(0,100).forEach(log=>{
+    h+='<tr>';
+    recentCols.forEach(col=>{
+      if(col==='time')h+='<td class="mono">'+fmtTime(log.ts)+'</td>';
+      else if(col==='model')h+='<td>'+escHtml(log.model||'--')+'</td>';
+      else if(col==='provider')h+='<td>'+escHtml(log.provider||'--')+'</td>';
+      else if(col==='resp')h+='<td>'+escHtml(log.provider_response||'--')+'</td>';
+      else if(col==='tier')h+='<td>'+escHtml(log.tier||'--')+'</td>';
+      else if(col==='tokens')h+='<td>'+(log.tokens_in!=null?log.tokens_in+'/'+log.tokens_out:'--')+'</td>';
+      else if(col==='cache')h+='<td>'+(log.tokens_cached!=null?log.tokens_cached:'--')+'</td>';
+      else if(col==='cost')h+='<td class="mono">'+(log.cost!=null?'$'+log.cost.toFixed(8):'--')+'</td>';
+      else if(col==='latency')h+='<td>'+(log.latency_ms!=null?log.latency_ms+'ms':'--')+'</td>';
+      else if(col==='status')h+='<td class="'+(log.status===200||log.status===0?'s-ok':'s-err')+'">'+(log.status||'--')+'</td>';
+      else if(col==='session')h+='<td class="mono">'+(log.session_id?escHtml(log.session_id):'--')+'</td>';
     });
-
-  // Load raw YAML in background
-  fetch('/api/config/raw')
-    .then(r => r.text())
-    .then(text => {
-      rawYamlText = text;
-      document.getElementById('raw-yaml-text').value = text;
-    })
-    .catch(() => {});
-}
-
-function renderConfigForm(data) {
-  const form = document.getElementById('config-form');
-  let html = '';
-
-  // ---- Models ----
-  html += '<div class="config-section"><h3>📦 Models</h3>';
-  for (const [modelId, cfg] of Object.entries(data.models || {})) {
-    html += renderModelCard(modelId, cfg);
-  }
-  html += '</div>';
-
-  // ---- Migration ----
-  const mig = data.migration || {};
-  html += '<div class="config-section"><h3>🔄 Migration</h3>';
-  html += '<div class="form-row">';
-  html += formToggle('mig-enabled', 'Enabled', mig.enabled !== false);
-  html += formNum('mig-hysteresis', 'Hysteresis (mult)', mig.hysteresis_mult || 3.0, '0.1');
-  html += formNum('mig-est-turns', 'Est. Turns/Session', mig.est_turns_per_session || 50, '1');
-  html += '</div><div class="form-row">';
-  html += formNum('mig-cache-est', 'Cache Est. (tok)', mig.r_cache_estimate || 300000, '1');
-  html += formNum('mig-out-turn', 'Out/Turn Est.', mig.out_per_turn_estimate || 40000, '1');
-  html += '</div></div>';
-
-  // ---- Refresh ----
-  const ref = data.refresh || {};
-  html += '<div class="config-section"><h3>⏱  Refresh</h3>';
-  html += '<div class="form-row">';
-  html += formNum('ref-interval', 'Interval (min)', ref.interval_minutes || 30, '1');
-  html += formNum('ref-threshold', 'Price Threshold', ref.price_change_threshold || 0.01, '0.001');
-  html += '</div></div>';
-
-  // ---- Health ----
-  const hlth = data.health || {};
-  html += '<div class="config-section"><h3>💊 Health</h3>';
-  html += '<div class="form-row">';
-  html += formNum('hlth-cooldown', 'Init Cooldown (s)', hlth.initial_cooldown_seconds || 300, '1');
-  html += formNum('hlth-consecutive', 'Consecutive', hlth.consecutive_threshold || 3, '1');
-  html += '</div><div class="form-row">';
-  html += formNum('hlth-max', 'Max Cooldown (s)', hlth.max_cooldown_seconds || 43200, '1');
-  html += formNum('hlth-escalation', 'Escalation (s)', (hlth.escalation_seconds || [3600,43200]).join(','), '1');
-  html += '<div class="form-group"><label>Escalation (comma-separated)</label><small style="color:var(--text-dim);display:block;font-size:0.7rem;">e.g. 3600,43200</small></div>';
-  html += '</div></div>';
-
-  form.innerHTML = html;
-}
-
-function renderModelCard(modelId, cfg) {
-  const quants = cfg.quantizations || [];
-  const provs = cfg.providers || [];
-  const mp = cfg.max_price || {};
-  const safeId = modelId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  let html = '<div class="model-card" data-model="'+escHtml(modelId)+'">';
-  html += '<div class="model-card-header"><h4>'+escHtml(modelId)+'</h4></div>';
-
-  // Quantizations
-  html += '<div class="form-group"><label>Quantizations</label>';
-  html += '<div class="tag-list" id="tags-'+safeId+'-quants">';
-  quants.forEach(q => { html += '<span class="tag">'+escHtml(q)+'<button class="tag-remove" onclick="removeTag(this,\''+escHtml(modelId)+'\',\'quantizations\')">✕</button></span>'; });
-  html += '</div>';
-  html += '<div class="tag-input-row"><input type="text" placeholder="Add quantization" onkeydown="if(event.key===\'Enter\')addTag(this,\''+escHtml(modelId)+'\',\'quantizations\')"><button class="btn btn-sm btn-outline" onclick="addTag(this.previousElementSibling,\''+escHtml(modelId)+'\',\'quantizations\')">+</button></div></div>';
-
-  // Providers
-  html += '<div class="form-group"><label>Providers</label>';
-  html += '<div class="tag-list" id="tags-'+safeId+'-provs">';
-  provs.forEach(p => { html += '<span class="tag">'+escHtml(p)+'<button class="tag-remove" onclick="removeTag(this,\''+escHtml(modelId)+'\',\'providers\')">✕</button></span>'; });
-  html += '</div>';
-  html += '<div class="tag-input-row"><input type="text" placeholder="Add provider" onkeydown="if(event.key===\'Enter\')addTag(this,\''+escHtml(modelId)+'\',\'providers\')"><button class="btn btn-sm btn-outline" onclick="addTag(this.previousElementSibling,\''+escHtml(modelId)+'\',\'providers\')">+</button></div></div>';
-
-  // Max price
-  html += '<div class="form-row">';
-  html += formNum('mp-in-'+safeId, 'Max Price In', mp.input || 0, '0.01');
-  html += formNum('mp-out-'+safeId, 'Max Price Out', mp.completion || 0, '0.01');
-  html += formNum('mp-cache-'+safeId, 'Max Price Cache', mp.cache || 0, '0.01');
-  html += '</div>';
-
-  html += '</div>';
-  return html;
-}
-
-/* ---- Form helpers ---- */
-function formToggle(id, label, checked) {
-  return '<div class="form-group"><label>'+escHtml(label)+'</label><div style="margin-top:4px;"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="'+id+'" '+(checked?'checked':'')+' style="width:auto;"> <span>'+(checked?'✅':'⛔')+'</span></label></div></div>';
-}
-function formNum(id, label, val, step) {
-  return '<div class="form-group"><label>'+escHtml(label)+'</label><input type="number" id="'+id+'" value="'+escHtml(String(val))+'" step="'+escHtml(step)+'" lang="en"></div>';
-}
-
-/* ---- Tag management ---- */
-function addTag(input, modelId, field) {
-  const val = input.value.trim();
-  if (!val) return;
-  const safeId = modelId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const tagListId = field === 'quantizations' ? 'tags-'+safeId+'-quants' : 'tags-'+safeId+'-provs';
-  const list = document.getElementById(tagListId);
-  const tag = document.createElement('span');
-  tag.className = 'tag';
-  tag.innerHTML = escHtml(val) + '<button class="tag-remove" onclick="removeTag(this,\''+escHtml(modelId)+'\',\''+field+'\')">✕</button>';
-  list.appendChild(tag);
-  input.value = '';
-}
-
-function removeTag(btn, modelId, field) {
-  const span = btn.parentElement;
-  span.remove();
-}
-
-/* ---- Toggle raw YAML ---- */
-function toggleRawYaml() {
-  const panel = document.getElementById('raw-yaml-panel');
-  rawYamlVisible = !rawYamlVisible;
-  panel.style.display = rawYamlVisible ? 'block' : 'none';
-  document.getElementById('btn-toggle-raw').textContent = rawYamlVisible ? '📄 Hide Raw YAML' : '📄 View Raw YAML';
-  // refresh raw text
-  fetch('/api/config/raw').then(r => r.text()).then(t => { rawYamlText = t; document.getElementById('raw-yaml-text').value = t; }).catch(()=>{});
-}
-
-/* ---- Save Config ---- */
-function saveConfig() {
-  const btn = document.getElementById('btn-save-config');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Saving...';
-
-  // Reconstruct config object from form state
-  const cfg = buildConfigFromForm();
-  if (!cfg) {
-    btn.disabled = false;
-    btn.innerHTML = '💾 Save Changes';
-    return;
-  }
-
-  // Serialize to YAML
-  const yaml = objectToYaml(cfg);
-
-  // PUT /api/config as text/plain
-  fetch('/api/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'text/plain' },
-    body: yaml
-  })
-    .then(r => {
-      if (!r.ok) return r.json().then(e => { throw new Error(e.detail?.error + ': ' + (e.detail?.details || e.detail)); });
-      return r.json();
-    })
-    .then(data => {
-      toast('Config saved and reloaded ✓', 'success');
-      // Refresh raw YAML
-      fetch('/api/config/raw').then(r => r.text()).then(t => { rawYamlText = t; document.getElementById('raw-yaml-text').value = t; }).catch(()=>{});
-    })
-    .catch(err => {
-      toast('Save failed: ' + err.message, 'error', 8000);
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = '💾 Save Changes';
-    });
-}
-
-function buildConfigFromForm() {
-  try {
-    const cfg = {
-      server: configData?.server || { host: '0.0.0.0', port: 8787, dashboard: true },
-      models: {},
-      migration: {
-        enabled: document.getElementById('mig-enabled')?.checked ?? true,
-        hysteresis_mult: parseFloat(document.getElementById('mig-hysteresis')?.value || '3.0'),
-        est_turns_per_session: parseInt(document.getElementById('mig-est-turns')?.value || '50'),
-        r_cache_estimate: parseInt(document.getElementById('mig-cache-est')?.value || '300000'),
-        out_per_turn_estimate: parseInt(document.getElementById('mig-out-turn')?.value || '40000'),
-      },
-      refresh: {
-        interval_minutes: parseInt(document.getElementById('ref-interval')?.value || '30'),
-        price_change_threshold: parseFloat(document.getElementById('ref-threshold')?.value || '0.01'),
-        times: configData?.refresh?.times || [],
-      },
-      health: {
-        initial_cooldown_seconds: parseInt(document.getElementById('hlth-cooldown')?.value || '300'),
-        consecutive_threshold: parseInt(document.getElementById('hlth-consecutive')?.value || '3'),
-        max_cooldown_seconds: parseInt(document.getElementById('hlth-max')?.value || '43200'),
-        escalation_seconds: parseEscalation(document.getElementById('hlth-escalation')?.value || '3600,43200'),
-      },
-    };
-
-    // Rebuild models from DOM
-    document.querySelectorAll('.model-card').forEach(card => {
-      const modelId = card.dataset.model;
-      if (!modelId) return;
-      const safeId = modelId.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-      const quants = [];
-      document.querySelectorAll('#tags-'+safeId+'-quants .tag').forEach(t => {
-        const txt = t.textContent.replace('✕', '').trim();
-        if (txt) quants.push(txt);
-      });
-
-      const provs = [];
-      document.querySelectorAll('#tags-'+safeId+'-provs .tag').forEach(t => {
-        const txt = t.textContent.replace('✕', '').trim();
-        if (txt) provs.push(txt);
-      });
-
-      const mpIn = parseFloat(document.getElementById('mp-in-'+safeId)?.value || '0');
-      const mpOut = parseFloat(document.getElementById('mp-out-'+safeId)?.value || '0');
-      const mpCache = parseFloat(document.getElementById('mp-cache-'+safeId)?.value || '0');
-
-      if (quants.length > 0 && provs.length > 0) {
-        cfg.models[modelId] = {
-          quantizations: quants,
-          providers: provs,
-          max_price: { input: mpIn, completion: mpOut, cache: mpCache },
-        };
-      }
-    });
-
-    return cfg;
-  } catch(e) {
-    toast('Error building config: ' + e.message, 'error');
-    return null;
-  }
-}
-
-function parseEscalation(s) {
-  if (!s || !s.trim()) return [3600, 43200];
-  return s.split(',').map(v => parseInt(v.trim()) || 0).filter(v => v > 0);
-}
-
-/* ================================================================
-   Minimal JS YAML serializer
-   ================================================================ */
-function objectToYaml(obj, indent) {
-  indent = indent || 0;
-  const pad = '  '.repeat(indent);
-  let lines = [];
-
-  for (const [key, val] of Object.entries(obj)) {
-    const k = String(key);
-    if (val === null || val === undefined) {
-      lines.push(pad + k + ': null');
-    } else if (typeof val === 'boolean') {
-      lines.push(pad + k + ': ' + (val ? 'true' : 'false'));
-    } else if (typeof val === 'number') {
-      // Preserve decimal for known float fields (YAML distingue 3.0 da 3)
-      const floatFields = ['hysteresis_mult', 'price_change_threshold', 'input', 'completion', 'cache'];
-      const str = String(val);
-      if (str.indexOf('.') === -1 && floatFields.includes(key)) {
-        lines.push(pad + k + ': ' + val + '.0');
-      } else {
-        lines.push(pad + k + ': ' + val);
-      }
-    } else if (typeof val === 'string') {
-      if (val.includes('\n') || val.includes(': ') || val.startsWith(' ') || val.includes('"') || val.includes("'")) {
-        lines.push(pad + k + ': "' + val.replace(/"/g, '\\"') + '"');
-      } else if (val === '' || val.match(/[\[\]\{\},&\*!|>]/)) {
-        lines.push(pad + k + ': "' + val + '"');
-      } else {
-        lines.push(pad + k + ': ' + val);
-      }
-    } else if (Array.isArray(val)) {
-      if (val.length === 0) {
-        lines.push(pad + k + ': []');
-      } else {
-        lines.push(pad + k + ':');
-        val.forEach(item => {
-          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-            lines.push(pad + '  -');
-            const sub = objectToYaml(item, indent + 3);
-            lines.push(sub.replace(/\n/g, '\n').split('\n').map(l => pad + '  ' + l).join('\n'));
-          } else {
-            const v = formatScalar(item);
-            lines.push(pad + '  - ' + v);
-          }
-        });
-      }
-    } else if (typeof val === 'object') {
-      if (Object.keys(val).length === 0) {
-        lines.push(pad + k + ': {}');
-      } else {
-        lines.push(pad + k + ':');
-        const sub = objectToYaml(val, indent + 2);
-        lines.push(sub);
-      }
-    }
-  }
-  return lines.join('\n');
-}
-
-function formatScalar(v) {
-  if (v === null || v === undefined) return 'null';
-  if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number') {
-    // Preserve .0 for integer floats
-    return String(v).indexOf('.') !== -1 ? String(v) : v % 1 === 0 ? v + '.0' : String(v);
-  }
-  const s = String(v);
-  if (s === '' || s.match(/[\[\]\{\},&\*!|>'"#%:@`]/) || s.includes(': ')) {
-    return "'" + s.replace(/'/g, "''") + "'";
-  }
-  return s;
-}
-
-/* ================================================================
-   Init
-   ================================================================ */
-(function init() {
-  // Load status + system data
-  fetchSystem();
-  fetchStatus();
-
-  // Start polling (default 15s)
-  setPollInterval(15);
-
-  // Connect SSE
-  connectSSE();
-
-  // Periodic status refresh (every 30s)
-  setInterval(fetchStatus, 30000);
-
-  // Close modal on overlay click
-  document.getElementById('restart-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
+    h+='</tr>';
   });
-
-  // Load config form when config section becomes active
-  // (lazy-loaded by switchSection)
-})();
+  tb.innerHTML=h;
+}
+function applyRecentFilters(){recentFilters={model:document.getElementById('recent-filter-model')?.value||'',provider:document.getElementById('recent-filter-provider')?.value||'',resp:document.getElementById('recent-filter-resp')?.value||'',tier:document.getElementById('recent-filter-tier')?.value||'',session:document.getElementById('recent-filter-session')?.value.trim()||''};renderRecentTable();}
+function resetRecentFilters(){['recent-filter-model','recent-filter-provider','recent-filter-resp','recent-filter-tier'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});const se=document.getElementById('recent-filter-session');if(se)se.value='';recentFilters={model:'',provider:'',resp:'',tier:'',session:''};renderRecentTable();}
+function setRecentPollInterval(s){localStorage.setItem('orbp_recent_interval',s);if(recentLogTimer)clearInterval(recentLogTimer);if(parseInt(s)>0){recentLogTimer=setInterval(fetchRecentLogs,parseInt(s)*1000);fetchRecentLogs();}}
+function fetchLogs(){fetch('/api/logs/recent?limit=500').then(r=>r.json()).then(d=>{logsAllData=(d.data||[]).reverse();populateLogFilterOptions();applyLogsClientFilters();}).catch(()=>{document.getElementById('logs-empty').textContent='Failed to load logs.';});}
+function populateLogFilterOptions(){const uniq=a=>[...new Set(a.filter(Boolean))].sort();fillSelect('log-filter-model',uniq(logsAllData.map(l=>l.model)),'All Models');fillSelect('log-filter-provider',uniq(logsAllData.map(l=>l.provider)),'All Providers');fillSelect('log-filter-resp',uniq(logsAllData.map(l=>l.provider_response)),'All Resp Providers');fillSelect('log-filter-status',uniq(logsAllData.map(l=>String(l.status))),'All Status');}
+function applyLogsClientFilters(){
+  const f=logsFilters;
+  logsAllFiltered=logsAllData.filter(l=>{
+    if(f.model&&l.model!==f.model)return false;
+    if(f.provider&&l.provider!==f.provider)return false;
+    if(f.resp&&(l.provider_response||'')!==f.resp)return false;
+    if(f.status&&String(l.status)!==f.status)return false;
+    if(f.session&&!(l.session_id||'').includes(f.session))return false;
+    if(f.from&&l.ts<f.from+'T00:00:00')return false;
+    if(f.to&&l.ts>f.to+'T23:59:59')return false;
+    return true;
+  });
+  logsPage=0;renderLogsPage();
+}
+function renderLogsPage(){const tb=document.getElementById('logs-tbody'),em=document.getElementById('logs-empty'),st=logsPage*LPP,pg=logsAllFiltered.slice(st,st+LPP);if(!pg.length){tb.innerHTML='';em.style.display='block';document.getElementById('logs-page-info').textContent='Page '+(logsPage+1);return;}em.style.display='none';let h='';pg.forEach((log,i)=>{const idx=st+i+1;h+='<tr><td>'+idx+'</td><td class="mono">'+fmtTime(log.ts)+'</td><td>'+escHtml(log.model||'--')+'</td><td>'+escHtml(log.provider||'--')+'</td><td>'+escHtml(log.provider_response||'--')+'</td><td>'+escHtml(log.tier||'--')+'</td><td>'+(log.tokens_in!=null?log.tokens_in+'/'+log.tokens_out:'--')+'</td><td class="mono">'+(log.cost!=null?'$'+log.cost.toFixed(8):'--')+'</td><td class="'+(log.status===200?'s-ok':'s-err')+'">'+(log.status||'--')+'</td><td>'+(log.latency_ms!=null?log.latency_ms+'ms':'--')+'</td><td class="mono">'+(log.session_id?escHtml(log.session_id):'--')+'</td></tr>';});tb.innerHTML=h;document.getElementById('logs-page-info').textContent='Page '+(logsPage+1)+' of '+Math.max(1,Math.ceil(logsAllFiltered.length/LPP));document.getElementById('logs-prev').disabled=logsPage===0;document.getElementById('logs-next').disabled=(logsPage+1)*LPP>=logsAllFiltered.length;}
+function logsPrevPage(){if(logsPage>0){logsPage--;renderLogsPage();}}
+function logsNextPage(){if((logsPage+1)*LPP<logsAllFiltered.length){logsPage++;renderLogsPage();}}
+function logsRefresh(){fetchLogs();}
+function applyLogFilters(){logsFilters={model:document.getElementById('log-filter-model')?.value||'',provider:document.getElementById('log-filter-provider')?.value||'',resp:document.getElementById('log-filter-resp')?.value||'',status:document.getElementById('log-filter-status')?.value||'',session:document.getElementById('log-filter-session')?.value.trim()||'',from:document.getElementById('log-filter-from')?.value||'',to:document.getElementById('log-filter-to')?.value||''};applyLogsClientFilters();}
+function resetLogFilters(){logsFilters={model:'',provider:'',resp:'',status:'',session:'',from:'',to:''};document.querySelectorAll('.logs-filters-bar select').forEach(s=>s.value='');document.querySelectorAll('.logs-filters-bar input').forEach(i=>i.value='');applyLogsClientFilters();}
+function logsDownload(){const fmt=document.querySelector('input[name="log-format"]:checked')?.value||'jsonl';window.open('/api/logs/download?format='+fmt+'&source=proxy','_blank');}
+function openAddModel(){addSelectedProviders=[];document.getElementById('add-model-modal').classList.add('open');document.getElementById('add-model-detail').style.display='none';document.getElementById('add-selected-providers').innerHTML='';document.getElementById('add-model-select').innerHTML='<option value="">-- Select a model --</option>';fetchCatalog();}
+function closeAddModel(){document.getElementById('add-model-modal').classList.remove('open');}
+(function initModals(){var el=document.getElementById('add-model-modal');if(el)el.addEventListener('click',function(e){if(e.target===this)closeAddModel();});})();
+function fetchCatalog(){const sel=document.getElementById('add-model-select');sel.innerHTML='<option value="">Loading...</option>';fetch('/api/models/catalog').then(r=>r.json()).then(d=>{const cat=(d.data||[]).slice().sort((a,b)=>String(a.id).replace(/^~/,'').localeCompare(String(b.id).replace(/^~/,'')));let h='<option value="">-- Select a model -- ('+cat.length+' models)</option>';cat.forEach(m=>{h+='<option value="'+escHtml(m.id)+'" data-ctx="'+(m.context_length||'')+'" data-pin="'+(m.pricing?.prompt||'0')+'" data-pout="'+(m.pricing?.completion||'0')+'" data-pcache="'+(m.pricing?.input_cache_read||'0')+'" data-free="'+m.free+'">'+escHtml(m.id)+(m.free?' [FREE]':'')+'</option>';});sel.innerHTML=h;toast('Loaded '+cat.length+' models','success',2000);}).catch(e=>{sel.innerHTML='<option value="">Failed. Refresh to retry.</option>';toast('Catalog fetch failed (timeout 30s)','error',5000);});}
+function onModelSelect(){const sel=document.getElementById('add-model-select'),opt=sel.options[sel.selectedIndex];if(!opt||!opt.value){document.getElementById('add-model-detail').style.display='none';return;}document.getElementById('add-model-detail').style.display='block';document.getElementById('add-ctx').value=opt.dataset.ctx||'--';document.getElementById('add-free').value=opt.dataset.free==='true'?'Yes (free)':'No';document.getElementById('add-price-in').value=opt.dataset.pin||'0';document.getElementById('add-price-out').value=opt.dataset.pout||'0';document.getElementById('add-price-cache').value=opt.dataset.pcache||'0';addSelectedProviders=[];document.getElementById('add-selected-providers').innerHTML='';fetch('/api/models/'+encodeURIComponent(opt.value)+'/endpoints').then(r=>r.json()).then(d=>{const eps=d.endpoints||[];addModelData=eps;const tb=document.getElementById('add-providers-tbody');if(!eps.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-dim);">No endpoints.</td></tr>';return;}let h='';eps.forEach(ep=>{const bad=ep.status!==0&&ep.status!=null;h+='<tr onclick="addProvClick(\''+escHtml(ep.tag)+'\')" style="cursor:pointer;"><td>'+escHtml(ep.provider_name||'--')+'</td><td>'+escHtml(ep.tag||'--')+'</td><td>'+escHtml(ep.quantization||'--')+'</td><td>'+escHtml(ep.pricing?.prompt||'--')+'</td><td>'+escHtml(ep.pricing?.completion||'--')+'</td><td>'+escHtml(ep.pricing?.input_cache_read||'--')+'</td><td>'+(bad?'<span style="color:var(--red);">🔻 DEGRADED</span>':(ep.uptime_last_30m!=null?ep.uptime_last_30m.toFixed(1)+'%':'--'))+'</td></tr>';});tb.innerHTML=h;toast('Loaded '+eps.length+' endpoints','info',2000);}).catch(e=>{document.getElementById('add-providers-tbody').innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--red);">Failed.</td></tr>';});}
+function addProvClick(tag){if(addSelectedProviders.includes(tag))return;addSelectedProviders.push(tag);const t=document.createElement('span');t.className='tag';t.innerHTML=escHtml(tag)+'<button class="tag-remove" onclick="removeProvTag(this,\''+escHtml(tag)+'\')">x</button>';document.getElementById('add-selected-providers').appendChild(t);}
+function removeProvTag(btn,tag){const i=addSelectedProviders.indexOf(tag);if(i>-1)addSelectedProviders.splice(i,1);btn.parentElement.remove();}
+function saveAddModel(){const sel=document.getElementById('add-model-select'),mid=sel.value;if(!mid){toast('Select a model','error');return;}const qd=[...new Set((addModelData||[]).map(e=>e.quantization).filter(Boolean))];const cfg=JSON.parse(JSON.stringify(configData||{server:{host:'0.0.0.0',port:8787,dashboard:true},models:{}}));cfg.models[mid]={quantizations:qd.length?qd:['fp8'],providers:addSelectedProviders.length?addSelectedProviders:['deepseek'],max_price:{input:parseFloat(document.getElementById('add-price-in').value)||0,completion:parseFloat(document.getElementById('add-price-out').value)||0,cache:parseFloat(document.getElementById('add-price-cache').value)||0}};const y=objectToYaml(cfg);const btn=document.getElementById('btn-add-model-save');btn.disabled=true;btn.innerHTML='Saving...';fetch('/api/config',{method:'PUT',headers:{'Content-Type':'text/plain'},body:y}).then(r=>{if(!r.ok)return r.json().then(e=>{throw new Error(e.detail?.error||'Failed');});return r.json();}).then(d=>{toast('Model added','success');closeAddModel();configData=cfg;loadConfigEditor();}).catch(e=>{toast('Save failed: '+e.message,'error',8000);}).finally(()=>{btn.disabled=false;btn.innerHTML='Save to Config';});}
+function openEditProviders(mid){editModelId=mid;editSelectedProviders=[];document.getElementById('edit-providers-model-name').textContent=mid;document.getElementById('edit-providers-loading').style.display='block';document.getElementById('edit-providers-table-wrap').style.display='none';document.getElementById('edit-selected-list').innerHTML='';document.getElementById('edit-providers-modal').classList.add('open');editCurrentProviders=configData?.models?.[mid]?.providers||[];fetch('/api/models/'+encodeURIComponent(mid)+'/endpoints').then(r=>r.json()).then(d=>{const eps=d.endpoints||[];editEps=eps;document.getElementById('edit-providers-loading').style.display='none';document.getElementById('edit-providers-table-wrap').style.display='block';const tb=document.getElementById('edit-providers-tbody');if(!eps.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-dim);">No endpoints.</td></tr>';return;}const base=t=>String(t||'').split('/')[0];let h='';eps.forEach(ep=>{const bad=ep.status!==0&&ep.status!=null;h+='<tr><td><input type="checkbox" data-tag="'+escHtml(ep.tag)+'" onchange="editProvCheck(this)"></td><td>'+escHtml(ep.provider_name||'--')+'</td><td>'+escHtml(ep.tag||'--')+'</td><td>'+escHtml(ep.quantization||'--')+'</td><td>'+escHtml(ep.pricing?.prompt||'--')+'</td><td>'+escHtml(ep.pricing?.completion||'--')+'</td><td>'+escHtml(ep.pricing?.input_cache_read||'--')+'</td><td>'+(bad?'<span style="color:var(--red);">🔻 DEGRADED</span>':(ep.uptime_last_30m!=null?ep.uptime_last_30m.toFixed(1)+'%':'--'))+'</td></tr>';});tb.innerHTML=h;document.querySelectorAll('#edit-providers-tbody input[type=checkbox]').forEach(cb=>{if(editCurrentProviders.some(p=>base(p)===base(cb.dataset.tag)))cb.checked=true;});document.querySelectorAll('#edit-providers-tbody input[type=checkbox]:checked').forEach(cb=>{editSelectedProviders.push(cb.dataset.tag);});renderEditTags();}).catch(e=>{document.getElementById('edit-providers-loading').textContent='Failed to load endpoints.';});}
+function closeEditProviders(){document.getElementById('edit-providers-modal').classList.remove('open');}
+(function(){var el=document.getElementById('edit-providers-modal');if(el)el.addEventListener('click',function(e){if(e.target===this)closeEditProviders();});})();
+function editProvCheck(cb){const tag=cb.dataset.tag;if(cb.checked&&!editSelectedProviders.includes(tag))editSelectedProviders.push(tag);else{const i=editSelectedProviders.indexOf(tag);if(i>-1)editSelectedProviders.splice(i,1);}renderEditTags();}
+function renderEditTags(){const list=document.getElementById('edit-selected-list');list.innerHTML='';editSelectedProviders.forEach((tag,i)=>{const t=document.createElement('span');t.className='tag';t.style.cursor='move';t.innerHTML=escHtml(tag)+'<button class="tag-move" title="Move up" onclick="moveSelTag(this,-1)">↑</button><button class="tag-move" title="Move down" onclick="moveSelTag(this,1)">↓</button><button class="tag-remove" onclick="removeEditTag(this,\''+escHtml(tag)+'\')">x</button>';list.appendChild(t);});}
+function removeEditTag(btn,tag){const i=editSelectedProviders.indexOf(tag);if(i>-1)editSelectedProviders.splice(i,1);document.querySelectorAll('#edit-providers-tbody input[type=checkbox]').forEach(cb=>{if(cb.dataset.tag===tag)cb.checked=false;});btn.parentElement.remove();}
+function saveEditProviders(){if(!editModelId||!configData)return;const cfg=JSON.parse(JSON.stringify(configData));const base=t=>String(t||'').split('/')[0];const eps=editEps||[];const byBase={};editCurrentProviders.forEach(p=>byBase[base(p)]=p);const unmatched=editCurrentProviders.filter(p=>!eps.some(ep=>base(ep.tag)===base(p)));const merged=[];editCurrentProviders.forEach(p=>{if(editSelectedProviders.some(t=>base(t)===base(p))||unmatched.includes(p))merged.push(p);});editSelectedProviders.forEach(t=>{if(!byBase[base(t)])merged.push(t);});if(cfg.models[editModelId])cfg.models[editModelId].providers=merged.length?merged:cfg.models[editModelId].providers;const y=objectToYaml(cfg);fetch('/api/config',{method:'PUT',headers:{'Content-Type':'text/plain'},body:y}).then(r=>{if(!r.ok)return r.json().then(e=>{throw new Error(e.detail?.error||'Failed');});return r.json();}).then(d=>{toast('Providers updated','success');closeEditProviders();configData=cfg;loadConfigEditor();}).catch(e=>{toast('Save failed: '+e.message,'error',8000);});}
+function confirmDeleteModel(mid){deleteModelId=mid;document.getElementById('delete-model-name').textContent=mid;document.getElementById('delete-modal').classList.add('open');}
+function closeDeleteModal(){document.getElementById('delete-modal').classList.remove('open');deleteModelId=null;}
+(function(){var el=document.getElementById('delete-modal');if(el)el.addEventListener('click',function(e){if(e.target===this)closeDeleteModal();});})();
+function doDeleteModel(){if(!deleteModelId)return;const btn=document.getElementById('confirm-delete-btn');btn.disabled=true;btn.innerHTML='Deleting...';fetch('/api/config/models/'+encodeURIComponent(deleteModelId),{method:'DELETE'}).then(r=>r.json()).then(d=>{toast('Model deleted','success');closeDeleteModal();loadConfigEditor();}).catch(e=>{toast('Delete failed: '+e.message,'error');}).finally(()=>{btn.disabled=false;btn.innerHTML='Delete';deleteModelId=null;});}
+function loadConfigEditor(){const form=document.getElementById('config-form');form.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem;">Loading...</p>';const ps=document.getElementById('proxysettings-form');if(ps)ps.innerHTML='<p style="color:var(--text-muted);font-size:0.85rem;">Loading...</p>';fetch('/api/config').then(r=>r.json()).then(d=>{configData=d;renderModelsForm(d);if(ps)renderProxySettingsForm(d);}).catch(e=>{form.innerHTML='<p style="color:var(--red);">Failed: '+escHtml(e.message)+'</p>';});fetch('/api/config/raw').then(r=>r.text()).then(t=>{rawYamlText=t;document.getElementById('raw-yaml-text').value=t;}).catch(()=>{});}
+function renderModelsForm(data){let h='';h+='<div class="config-section"><h3>Models</h3>';for(const[mid,cfg]of Object.entries(data.models||{}))h+=renderModelCard(mid,cfg);h+='<div style="margin-top:8px;"><button class="btn btn-sm btn-primary" onclick="openAddModel()">+ Add Model</button></div></div>';document.getElementById('config-form').innerHTML=h;}
+function renderProxySettingsForm(data){let h='';const m=data.migration||{};h+='<div class="config-section"><h3>Migration</h3><div class="form-row">';h+=fTog('mig-enabled','Enabled <span class="hint-icon" title="Enable automatic provider migration when prices change">?</span>',m.enabled!==false);h+=fNum('mig-hysteresis','Hysteresis (mult) <span class="hint-icon" title="Multiplier to avoid ping-pong migration: price advantage must exceed this factor before switching">?</span>',m.hysteresis_mult||3.0,'0.1');h+=fNum('mig-est-turns','Est. Turns/Session <span class="hint-icon" title="Estimated turns per session, used to estimate saved cost per migration">?</span>',m.est_turns_per_session||50,'1');h+='</div><div class="form-row">';h+=fNum('mig-cache-est','Cache Est. (tok) <span class="hint-icon" title="Estimated cached tokens per session for cost comparison">?</span>',m.r_cache_estimate||300000,'1');h+=fNum('mig-out-turn','Out/Turn Est. <span class="hint-icon" title="Estimated completion tokens per turn for cost comparison">?</span>',m.out_per_turn_estimate||40000,'1');h+='</div></div>';const ref=data.refresh||{};h+='<div class="config-section"><h3>⏱  Refresh</h3><div class="form-row">';h+=fNum('ref-interval','Interval (min) <span class="hint-icon" title="How often (in minutes) to refresh endpoint prices from OpenRouter (1-1440)">?</span>',ref.interval_minutes||30,'1');h+=fNum('ref-threshold','Price Threshold <span class="hint-icon" title="Relative price-change threshold (0.01 = 1%) that triggers a provider re-selection">?</span>',ref.price_change_threshold||0.01,'0.001');h+='</div><div class="form-group"><label>Fixed Times <span class="hint-icon" title="Explicit times (HH:MM) to run the refresh regardless of interval">?</span></label><div class="timer-items" id="timer-items">';(ref.times||[]).forEach((t,i)=>{if(typeof t==='string')h+='<span class="timer-item">'+escHtml(t)+'<button onclick="removeTimer('+i+')">x</button></span>';else if(t.from)h+='<span class="timer-item">'+escHtml(t.from)+'-'+escHtml(t.to)+'/'+escHtml(t.step)+'<button onclick="removeTimer('+i+')">x</button></span>';});h+='</div><div style="display:flex;gap:4px;margin-top:4px;"><input type="time" id="timer-add-time" style="width:100px;"><button class="btn btn-sm btn-outline" onclick="addTimerTime()">+ Time</button></div>';h+='<div style="display:flex;gap:4px;margin-top:4px;align-items:center;"><span style="font-size:0.75rem;color:var(--text-muted);">Dense:</span><input type="time" id="timer-from" style="width:100px;" value="00:00"><span style="font-size:0.75rem;color:var(--text-muted);">to</span><input type="time" id="timer-to" style="width:100px;" value="23:55"><span style="font-size:0.75rem;color:var(--text-muted);">step</span><input type="text" id="timer-step" style="width:60px;" value="05m"><button class="btn btn-sm btn-outline" onclick="addDenseWindow()">Add</button></div></div></div>';const hl=data.health||{};h+='<div class="config-section"><h3>💊 Health</h3><div class="form-row">';h+=fNum('hlth-cooldown','Init Cooldown (s) <span class="hint-icon" title="Cooldown applied to a provider on first failure">?</span>',hl.initial_cooldown_seconds||300,'1');h+=fNum('hlth-consecutive','Consecutive <span class="hint-icon" title="Consecutive failures before cooldown escalates">?</span>',hl.consecutive_threshold||3,'1');h+='</div><div class="form-row">';h+=fNum('hlth-max','Max Cooldown (s) <span class="hint-icon" title="Maximum cooldown ceiling after escalation">?</span>',hl.max_cooldown_seconds||43200,'1');h+=fNum('hlth-escalation','Escalation (s) <span class="hint-icon" title="Cooldown escalation steps (comma-separated seconds)">?</span>',(hl.escalation_seconds||[3600,43200]).join(','),'1');h+='<div class="form-group"><label>Escalation (comma)</label><small style="color:var(--text-dim);display:block;font-size:0.7rem;">e.g. 3600,43200</small></div></div></div>';document.getElementById('proxysettings-form').innerHTML=h;}
+function renderModelCard(mid,cfg){const q=cfg.quantizations||[],p=cfg.providers||[],mp=cfg.max_price||{},sid=mid.replace(/[^a-zA-Z0-9_-]/g,'_');let h='<div class="model-card" data-model="'+escHtml(mid)+'"><div class="model-card-header"><h4>'+escHtml(mid)+'</h4><button class="del-model-btn" onclick="confirmDeleteModel(\''+escHtml(mid)+'\')" title="Delete">x</button></div>';h+='<div class="form-group"><label>Quantizations</label><div class="tag-list" id="tags-'+sid+'-quants">';q.forEach(v=>{h+='<span class="tag">'+escHtml(v)+'<button class="tag-remove" onclick="removeTag(this)">x</button></span>';});h+='</div><div class="tag-input-row"><input type="text" placeholder="Add" onkeydown="if(event.key===\'Enter\')addTag(this,\''+escHtml(mid)+'\',\'quantizations\')"><button class="btn btn-sm btn-outline" onclick="addTag(this.previousElementSibling,\''+escHtml(mid)+'\',\'quantizations\')">+</button></div></div>';h+='<div class="form-group"><label>Providers</label><div class="tag-list" id="tags-'+sid+'-provs">';p.forEach((v,i)=>{h+='<span class="tag">'+escHtml(v)+'<button class="tag-move" title="Move up" onclick="moveProviderTag(this,-1)">↑</button><button class="tag-move" title="Move down" onclick="moveProviderTag(this,1)">↓</button><button class="tag-remove" onclick="removeTag(this)">x</button></span>';});h+='</div><div class="tag-input-row"><input type="text" placeholder="Add" onkeydown="if(event.key===\'Enter\')addTag(this,\''+escHtml(mid)+'\',\'providers\')"><button class="btn btn-sm btn-outline" onclick="addTag(this.previousElementSibling,\''+escHtml(mid)+'\',\'providers\')">+</button><button class="btn btn-sm btn-outline" onclick="openEditProviders(\''+escHtml(mid)+'\')" style="margin-left:4px;">Edit</button></div></div>';h+='<div class="form-row">';h+=fNum('mp-in-'+sid,'Max In <span class="hint-icon" title="Maximum input price per token">?</span>',mp.input||0,'0.01');h+=fNum('mp-out-'+sid,'Max Out <span class="hint-icon" title="Maximum completion price per token">?</span>',mp.completion||0,'0.01');h+=fNum('mp-cache-'+sid,'Max Cache <span class="hint-icon" title="Maximum cache read price per token">?</span>',mp.cache||0,'0.01');h+='</div></div>';return h;}
+function fTog(id,l,c){return'<div class="form-group"><label>'+l+'</label><div><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="'+id+'" '+(c?'checked':'')+' style="width:auto;"> <span>'+(c?'on':'off')+'</span></label></div></div>';}
+function fNum(id,l,v,s){return'<div class="form-group"><label>'+l+'</label><input type="number" id="'+id+'" value="'+escHtml(String(v))+'" step="'+escHtml(s)+'" lang="en"></div>';}
+function addTag(input,mid,f){const v=input.value.trim();if(!v)return;const sid=mid.replace(/[^a-zA-Z0-9_-]/g,'_'),lid=f==='quantizations'?'tags-'+sid+'-quants':'tags-'+sid+'-provs',list=document.getElementById(lid),t=document.createElement('span');t.className='tag';t.innerHTML=escHtml(v)+'<button class="tag-remove" onclick="removeTag(this)">x</button>';list.appendChild(t);input.value='';}
+function removeTag(btn){btn.parentElement.remove();}
+function moveProviderTag(btn,delta){const tag=btn.parentElement;const li=tag.parentElement;const tags=[...li.querySelectorAll('.tag')];const idx=tags.indexOf(tag);const nidx=idx+delta;if(nidx<0||nidx>=tags.length)return;if(delta<0)li.insertBefore(tag,tags[nidx]);else li.insertBefore(tag,tags[nidx].nextElementSibling);}
+function moveSelTag(btn,delta){const list=document.getElementById('edit-selected-list');const tag=btn.parentElement;const tags=[...list.querySelectorAll('.tag')];const idx=tags.indexOf(tag);const nidx=idx+delta;if(nidx<0||nidx>=tags.length)return;if(delta<0)list.insertBefore(tag,tags[nidx]);else list.insertBefore(tag,tags[nidx].nextElementSibling);editSelectedProviders.splice(nidx,0,editSelectedProviders.splice(idx,1)[0]);}
+function toggleRawYaml(){const p=document.getElementById('raw-yaml-panel');rawYamlVisible=!rawYamlVisible;p.style.display=rawYamlVisible?'block':'none';document.getElementById('btn-toggle-raw').textContent=rawYamlVisible?'Hide Raw YAML':'View Raw YAML';fetch('/api/config/raw').then(r=>r.text()).then(t=>{rawYamlText=t;document.getElementById('raw-yaml-text').value=t;}).catch(()=>{});}
+function saveConfig(){const btn=document.getElementById('btn-save-config');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving...';const cfg=buildCfg();if(!cfg){btn.disabled=false;btn.innerHTML='Save Changes';return;}const y=objectToYaml(cfg);fetch('/api/config',{method:'PUT',headers:{'Content-Type':'text/plain'},body:y}).then(r=>{if(!r.ok)return r.json().then(e=>{throw new Error(e.detail?.error||'Failed');});return r.json();}).then(d=>{toast('Config saved','success');fetch('/api/config/raw').then(r=>r.text()).then(t=>{rawYamlText=t;document.getElementById('raw-yaml-text').value=t;}).catch(()=>{});}).catch(e=>{toast('Save failed: '+e.message,'error',8000);}).finally(()=>{btn.disabled=false;btn.innerHTML='Save Changes';});}
+function buildCfg(){try{const cfg={server:configData?.server||{host:'0.0.0.0',port:8787,dashboard:true},models:{},migration:{enabled:document.getElementById('mig-enabled')?.checked??true,hysteresis_mult:parseFloat(document.getElementById('mig-hysteresis')?.value||'3.0'),est_turns_per_session:parseInt(document.getElementById('mig-est-turns')?.value||'50'),r_cache_estimate:parseInt(document.getElementById('mig-cache-est')?.value||'300000'),out_per_turn_estimate:parseInt(document.getElementById('mig-out-turn')?.value||'40000')},refresh:{interval_minutes:parseInt(document.getElementById('ref-interval')?.value||'30'),price_change_threshold:parseFloat(document.getElementById('ref-threshold')?.value||'0.01'),times:getTimerTimes()},health:{initial_cooldown_seconds:parseInt(document.getElementById('hlth-cooldown')?.value||'300'),consecutive_threshold:parseInt(document.getElementById('hlth-consecutive')?.value||'3'),max_cooldown_seconds:parseInt(document.getElementById('hlth-max')?.value||'43200'),escalation_seconds:parseEsc(document.getElementById('hlth-escalation')?.value||'3600,43200')}};document.querySelectorAll('.model-card').forEach(card=>{const mid=card.dataset.model;if(!mid)return;const sid=mid.replace(/[^a-zA-Z0-9_-]/g,'_');const q=[],pr=[];document.querySelectorAll('#tags-'+sid+'-quants .tag').forEach(t=>{const x=(t.firstChild?.textContent||'').trim();if(x)q.push(x);});document.querySelectorAll('#tags-'+sid+'-provs .tag').forEach(t=>{const x=(t.firstChild?.textContent||'').trim();if(x)pr.push(x);});if(q.length&&pr.length)cfg.models[mid]={quantizations:q,providers:pr,max_price:{input:parseFloat(document.getElementById('mp-in-'+sid)?.value||'0'),completion:parseFloat(document.getElementById('mp-out-'+sid)?.value||'0'),cache:parseFloat(document.getElementById('mp-cache-'+sid)?.value||'0')}};});return cfg;}catch(e){toast('Build config error: '+e.message,'error');return null;}}
+function getTimerTimes(){if(timerTimesCache)return timerTimesCache;return configData?.refresh?.times||[];}
+function addTimerTime(){const v=document.getElementById('timer-add-time').value;if(!v){toast('Select a time','error');return;}const times=getTimerTimes();times.push(v);timerTimesCache=times;document.getElementById('timer-add-time').value='';renderTimerItems(times);}
+function addDenseWindow(){const f=document.getElementById('timer-from').value,t=document.getElementById('timer-to').value,s=document.getElementById('timer-step').value;if(!f||!t||!s){toast('Fill from, to, step','error');return;}const times=getTimerTimes();times.push({from:f,to:t,step:s});timerTimesCache=times;renderTimerItems(times);}
+function removeTimer(idx){const times=getTimerTimes();times.splice(idx,1);timerTimesCache=times;renderTimerItems(times);}
+function renderTimerItems(times){const c=document.getElementById('timer-items');if(!c)return;c.innerHTML='';times.forEach((t,i)=>{const s=typeof t==='string'?escHtml(t):escHtml(t.from)+'-'+escHtml(t.to)+'/'+escHtml(t.step);c.innerHTML+='<span class="timer-item">'+s+'<button onclick="removeTimer('+i+')">x</button></span>';});}
+function parseEsc(s){if(!s||!s.trim())return[3600,43200];return s.split(',').map(v=>parseInt(v.trim())||0).filter(v=>v>0);}
+function openDeleteLogsModal(){document.getElementById('delete-logs-modal').classList.add('open');}
+function closeDeleteLogsModal(){document.getElementById('delete-logs-modal').classList.remove('open');}
+(function(){var el=document.getElementById('delete-logs-modal');if(el)el.addEventListener('click',function(e){if(e.target===this)closeDeleteLogsModal();});})();
+function doDeleteAllLogs(){const btn=document.getElementById('confirm-delete-logs-btn');btn.disabled=true;btn.innerHTML='Deleting...';fetch('/api/logs',{method:'DELETE'}).then(r=>r.json()).then(d=>{toast('Deleted '+d.deleted.length+' log file(s)','success');closeDeleteLogsModal();}).catch(e=>{toast('Delete failed: '+e.message,'error');}).finally(()=>{btn.disabled=false;btn.innerHTML='YES, DELETE';});}
+function exportConfig(){window.open('/api/config/export','_blank');}
+function importConfig(input){const file=input.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){fetch('/api/config/import',{method:'POST',headers:{'Content-Type':'application/x-yaml'},body:e.target.result}).then(r=>{if(!r.ok)return r.json().then(e2=>{throw new Error(e2.detail?.error||'Import failed');});return r.json();}).then(d=>{toast('Config imported (backup created)','success');loadConfigEditor();}).catch(e2=>{toast('Import failed: '+e2.message,'error',8000);});};reader.readAsText(file);input.value='';}
+function objectToYaml(obj,indent){indent=indent||0;const pad='  '.repeat(indent);let l=[];for(const[key,val]of Object.entries(obj)){const k=String(key);if(val===null||val===undefined)l.push(pad+k+': null');else if(typeof val==='boolean')l.push(pad+k+': '+(val?'true':'false'));else if(typeof val==='number'){const ff=['hysteresis_mult','price_change_threshold','input','completion','cache'],str=String(val);if(str.indexOf('.')===-1&&ff.includes(key))l.push(pad+k+': '+val+'.0');else l.push(pad+k+': '+val);}else if(typeof val==='string'){if(val.match(/[\[\]\{\},&\*!|>'"#%:@`]/)||val.includes(': ')||val.includes('\n'))l.push(pad+k+': "'+val.replace(/"/g,'\\"')+'"');else l.push(pad+k+': '+val);}else if(Array.isArray(val)){if(val.length===0)l.push(pad+k+': []');else{l.push(pad+k+':');val.forEach(item=>{if(typeof item==='object'&&item!==null&&!Array.isArray(item)){l.push(pad+'  -');const sub=objectToYaml(item,indent+3);sub.split('\n').forEach(s=>l.push(pad+'  '+s));}else l.push(pad+'  - '+fmtScalar(item));});}}else if(typeof val==='object'){if(Object.keys(val).length===0)l.push(pad+k+': {}');else{l.push(pad+k+':');const sub=objectToYaml(val,indent+2);l.push(sub);}}}return l.join('\n');}
+function fmtScalar(v){if(v===null||v===undefined)return'null';if(typeof v==='boolean')return v?'true':'false';if(typeof v==='number')return String(v).indexOf('.')!==-1?String(v):v%1===0?v+'.0':String(v);const s=String(v);if(s===''||s.match(/[\[\]\{\},&\*!|>'"#%:@`]/)||s.includes(': '))return"\'"+s.replace(/'/g,"''")+"\'";return s;}
+(function init(){fetchSystem();fetchStatus();setInterval(()=>{fetchSystem();fetchStatus();},10000);initRecentCols();renderRecentHead();fetchRecentLogs();setRecentPollInterval(document.getElementById('recent-poll-select')?.value||10);fetch('/api/config').then(r=>r.json()).then(d=>{const sse=d?.server?.sse_log===true;const el=document.getElementById('nav-realtime');if(el)el.style.display=sse?'':'none';const box=document.getElementById('live-log-box');if(box)box.style.display=sse?'':'none';document.getElementById('log-status').textContent=sse?'🟢 connected':'⛔ disabled';if(sse)connectSSE();}).catch(()=>{const box=document.getElementById('live-log-box');if(box)box.style.display='none';document.getElementById('log-status').textContent='⛔ disabled';});document.getElementById('restart-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});document.addEventListener('click',function(e){const dd=document.getElementById('col-dropdown');if(dd&&!e.target.closest('.col-btn'))dd.classList.remove('show');});document.getElementById('col-dropdown')?.addEventListener('change',saveRecentCols);})();
 </script>
 </body>
 </html>
