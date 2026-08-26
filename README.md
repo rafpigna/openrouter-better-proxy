@@ -332,6 +332,29 @@ health:
 
 If all providers in a tier are in cooldown, the router falls back to the next lower quantization tier.
 
+#### Retry settings
+
+Controls how many times the proxy retries a provider **before** falling back to the next authorized one. It applies to a single request, on the same provider.
+
+```yaml
+retry:
+  max_attempts: 3          # Total attempts per provider (3 = up to 2 retries)
+  delay_seconds: 2.5       # Fixed delay between retry attempts (seconds)
+```
+
+**How retry works:**
+
+- `max_attempts` is the **total** number of times a provider is tried for one request (`1` = no retry, current behaviour). Retries = `max_attempts - 1`.
+- `delay_seconds` is the fixed wait between two consecutive attempts on the same provider.
+- Retries happen only on **transient pre-stream errors**: HTTP `429`, `5xx`, connection errors and timeouts. Definitive errors (other `4xx`, e.g. `400`/`404`) and mid-stream failures are **never** retried.
+- A provider is put into cooldown (`health`) **only after** all its retries for the request are exhausted. A provider that recovers within the retry window (e.g. answers on the 2nd attempt) is **not** penalized — it keeps the session cache and never enters cooldown.
+- Only after the retries of one provider are exhausted does the proxy fail over to the next authorized candidate.
+- The whole retry + fallback cascade happens inside a **single** request: the client (Hermes) sees one HTTP round-trip, and only receives an error if every authorized provider has exhausted its retries.
+
+> Retry and `health` cooldown are two independent mechanisms. `retry.max_attempts` = how many times the **same** provider is tried within this request; `health.consecutive_threshold` = how many cumulative errors it takes for the cooldown **duration** to escalate. They don't count the same thing. See `docs/RETRY-COOLDOWN-LOGICS.md` for a detailed explanation with end-to-end examples.
+
+These settings are also editable from the dashboard, at **Proxy Settings → 🔁 Retry**.
+
 ---
 
 ## Usage
