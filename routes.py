@@ -1,5 +1,6 @@
 """HTTP routes — FastAPI endpoints with SSE streaming support."""
 
+import asyncio
 import json
 import logging
 import time
@@ -105,10 +106,16 @@ async def list_models():
 
 async def _forward_stream(
     body: dict,
-    provider_slug: str,
-    tier: str,
+    candidates: list[tuple[str, str]],
 ) -> AsyncGenerator[str, None]:
-    """Forward streaming response from OpenRouter as SSE."""
+    """Forward streaming response from OpenRouter as SSE, with in-process
+    failover across the AUTHORIZED candidates only.
+
+    Each candidate is attempted at most once per request (pre-stream errors:
+    429, 5xx, timeout, connect → next candidate). The session is bound to the
+    provider that actually returns a 200. If every authorized candidate fails,
+    an error SSE block is returned (never a provider outside the list).
+    """
     global ERROR_COUNT
     start = time.monotonic()
     model_id = body.get("model", "")
@@ -123,106 +130,154 @@ async def _forward_stream(
     }
     url = "https://openrouter.ai/api/v1/chat/completions"
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream("POST", url, json=body, headers=headers) as resp:
-                if resp.status_code != 200:
-                    error_text = await resp.aread()
-                    logger.error(f"Upstream error {resp.status_code}: {error_text}")
-                    _router.record_error(provider_slug)
-                    ERROR_COUNT += 1
-                    latency_ms = int((time.monotonic() - start) * 1000)
+    last_status = None
+    last_error_text = None
+
+    for provider_slug, tier in candidates:
+        # Pin this attempt to the authorized provider
+        upstream = dict(body)
+        upstream["provider"] = {"only": [provider_slug]}
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", url, json=upstream, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        error_text = await resp.aread()
+                        logger.error(f"Upstream error {resp.status_code} ({provider_slug}): {error_text}")
+                        _router.record_error(provider_slug)
+                        ERROR_COUNT += 1
+                        latency_ms = int((time.monotonic() - start) * 1000)
+                        _write_proxy_log(
+                            model_id, provider_slug, tier, session_id, True,
+                            resp.status_code, None, latency_ms, error_text.decode(), None, None,
+                        )
+                        last_status = resp.status_code
+                        last_error_text = error_text.decode()
+                        continue  # try next authorized candidate
+
+                    # Success: bind session to the winning provider
+                    _router.record_success(provider_slug)
+                    _router.bind_session(session_id, provider_slug)
+
+                    usage = None
+                    provider_response = None
+                    model_response = None
+
+                    try:
+                        # Stream SSE chunks byte-by-byte. Upstream already sends
+                        # "data: {...}" format, pass through as-is.
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            # Skip "OPENROUTER PROCESSING" transient messages
+                            if "OPENROUTER PROCESSING" in line:
+                                logger.debug(f"Skipping upstream status message: {line[:100]}")
+                                continue
+                            # Intercept usage in the chunk before [DONE]
+                            if line.startswith("data: ") and line[6:] != "[DONE]":
+                                try:
+                                    chunk = json.loads(line[6:])
+                                    if "usage" in chunk:
+                                        usage = chunk["usage"]
+                                    if provider_response is None and chunk.get("provider"):
+                                        provider_response = chunk.get("provider")
+                                    if model_response is None and chunk.get("model"):
+                                        model_response = chunk.get("model")
+                                except json.JSONDecodeError:
+                                    pass
+                            yield f"{line}\n\n"
+                    except (httpx.ReadError, httpx.ProtocolError, httpx.HTTPError) as e:
+                        # Mid-stream failure: not revocable (DESIGN §4). Log it
+                        # as an error and cut the stream.
+                        _router.record_error(provider_slug)
+                        ERROR_COUNT += 1
+                        _write_proxy_log(
+                            model_id, provider_slug, tier, session_id, True,
+                            502, None, int((time.monotonic() - start) * 1000),
+                            f"mid-stream: {e}", provider_response, model_response,
+                        )
+                        error_data = {
+                            "error": {
+                                "message": f"Provider {provider_slug} stream interrupted: {e}",
+                                "type": "stream_error",
+                            }
+                        }
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    except asyncio.CancelledError:
+                        # Client disconnected / aborted the stream. The upstream
+                        # request DID happen (and may be billed), so log it.
+                        _write_proxy_log(
+                            model_id, provider_slug, tier, session_id, True,
+                            200, usage, int((time.monotonic() - start) * 1000),
+                            None, provider_response, model_response,
+                        )
+                        raise
+
+                    # End of stream — write proxy log
                     _write_proxy_log(
                         model_id, provider_slug, tier, session_id, True,
-                        resp.status_code, None, latency_ms, error_text.decode(), None, None,
+                        200, usage, int((time.monotonic() - start) * 1000),
+                        None, provider_response, model_response,
                     )
-                    # Return error as SSE event
-                    error_data = {
-                        "error": {
-                            "message": f"Upstream error: {error_text.decode()}",
-                            "type": "upstream_error",
-                            "code": resp.status_code,
-                        }
-                    }
-                    yield f"data: {json.dumps(error_data)}\n\n"
                     yield "data: [DONE]\n\n"
                     return
 
-                _router.record_success(provider_slug)
+        except httpx.ConnectError as e:
+            logger.error(f"Connect error to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, True,
+                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 502
+            last_error_text = str(e)
+            continue
 
-                usage = None
-                provider_response = None
-                model_response = None
+        except httpx.TimeoutException as e:
+            logger.error(f"Timeout connecting to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, True,
+                504, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 504
+            last_error_text = str(e)
+            continue
 
-                # Stream SSE chunks byte-by-byte
-                # Upstream already sends "data: {...}" format, pass through as-is
-                async for line in resp.aiter_lines():
-                    if not line:
-                        continue
-                    # Skip "OPENROUTER PROCESSING" status messages from upstream
-                    # These are transient and don't indicate an error
-                    if "OPENROUTER PROCESSING" in line:
-                        logger.debug(f"Skipping upstream status message: {line[:100]}")
-                        continue
-                    # Intercept usage in the chunk before [DONE]
-                    if line.startswith("data: ") and line[6:] != "[DONE]":
-                        try:
-                            chunk = json.loads(line[6:])
-                            if "usage" in chunk:
-                                usage = chunk["usage"]
-                            # Capture provider/model from response chunks
-                            if provider_response is None and chunk.get("provider"):
-                                provider_response = chunk.get("provider")
-                            if model_response is None and chunk.get("model"):
-                                model_response = chunk.get("model")
-                        except json.JSONDecodeError:
-                            pass
-                    # Pass through the line as-is (upstream already has "data: " prefix)
-                    yield f"{line}\n\n"
+        except httpx.HTTPError as e:
+            # Read/Protocol/etc errors on the request path
+            logger.error(f"HTTP error to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, True,
+                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 502
+            last_error_text = str(e)
+            continue
 
-                # End of stream — write proxy log
-                latency_ms = int((time.monotonic() - start) * 1000)
-                _write_proxy_log(
-                    model_id, provider_slug, tier, session_id, True,
-                    200, usage, latency_ms, None, provider_response, model_response,
-                )
-                yield "[DONE]\n\n"
-
-    except httpx.ConnectError as e:
-        logger.error(f"Connect error to {provider_slug}: {e}")
-        _router.record_error(provider_slug)
-        ERROR_COUNT += 1
-        latency_ms = int((time.monotonic() - start) * 1000)
-        _write_proxy_log(
-            model_id, provider_slug, tier, session_id, True,
-            502, None, latency_ms, str(e), None, None,
-        )
-        error_data = {
-            "error": {
-                "message": f"Provider {provider_slug} unreachable: {e}",
-                "type": "connect_error",
-            }
+    # Exhausted all authorized candidates with no success
+    if last_status is not None:
+        message = f"All authorized providers failed (last: {last_status} {last_error_text})"
+        error_code = last_status
+    else:
+        message = "No authorized provider available"
+        error_code = 503
+    logger.error(message)
+    error_data = {
+        "error": {
+            "message": message,
+            "type": "upstream_error",
+            "code": error_code,
         }
-        yield f"data: {json.dumps(error_data)}\n\n"
-        yield "data: [DONE]\n\n"
-
-    except httpx.TimeoutException as e:
-        logger.error(f"Timeout connecting to {provider_slug}: {e}")
-        _router.record_error(provider_slug)
-        ERROR_COUNT += 1
-        latency_ms = int((time.monotonic() - start) * 1000)
-        _write_proxy_log(
-            model_id, provider_slug, tier, session_id, True,
-            504, None, latency_ms, str(e), None, None,
-        )
-        error_data = {
-            "error": {
-                "message": f"Provider {provider_slug} timeout: {e}",
-                "type": "timeout_error",
-            }
-        }
-        yield f"data: {json.dumps(error_data)}\n\n"
-        yield "data: [DONE]\n\n"
+    }
+    yield f"data: {json.dumps(error_data)}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 @router.post("/v1/chat/completions")
@@ -247,30 +302,32 @@ async def chat_completions(request: dict):
         for msg in messages
     )
 
-    # Select provider
+    # Select the ordered list of AUTHORIZED candidates (allowlist gate applied
+    # inside the router). Never a provider outside the configured list.
     global REQUEST_COUNT
     REQUEST_COUNT += 1
-    selection = _router.select_provider(
+    candidates = _router.select_candidates(
         model_id=model_id,
         session_id=session_id,
         tools=has_tools,
     )
 
-    if not selection:
+    if not candidates:
+        # No authorized, usable provider: honest error to the client. The proxy
+        # NEVER falls back to a provider that isn't configured.
         raise HTTPException(
             status_code=400,
-            detail=f"No valid provider found for model {model_id}",
+            detail=f"No authorized provider available for model {model_id}",
         )
 
-    provider_slug, tier = selection
-    logger.info(f"Routing {model_id} → {provider_slug} (tier={tier})")
+    provider_slug, tier = candidates[0]
+    logger.info(f"Routing {model_id} → {provider_slug} (tier={tier}) [candidates={len(candidates)}]")
 
-    # Build upstream request
+    # Build upstream request (provider pinned per-attempt by the forward loop)
     upstream_body = {
         "model": model_id,
         "messages": messages,
         "stream": stream,
-        "provider": {"only": [provider_slug]},
     }
 
     # Forward compatible fields
@@ -288,10 +345,11 @@ async def chat_completions(request: dict):
     # Add any extra fields from extra_body
     upstream_body.update(extra_body)
 
-    # Return streaming or non-streaming response
+    # Return streaming or non-streaming response. Both run the in-process
+    # failover loop over the authorized `candidates` only.
     if stream:
         return StreamingResponse(
-            _forward_stream(upstream_body, provider_slug, tier),
+            _forward_stream(upstream_body, candidates),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -300,15 +358,16 @@ async def chat_completions(request: dict):
             },
         )
     else:
-        return await _forward_non_stream(upstream_body, provider_slug, tier)
+        return await _forward_non_stream(upstream_body, candidates)
 
 
 async def _forward_non_stream(
     body: dict,
-    provider_slug: str,
-    tier: str,
+    candidates: list[tuple[str, str]],
 ) -> dict:
-    """Forward non-streaming request to OpenRouter."""
+    """Forward non-streaming request to OpenRouter, with in-process failover
+    across the AUTHORIZED candidates only. Returns the first successful
+    response body; if none succeeds, raises an error to the calling client."""
     global ERROR_COUNT
     start = time.monotonic()
     model_id = body.get("model", "")
@@ -323,13 +382,20 @@ async def _forward_non_stream(
     }
     url = "https://openrouter.ai/api/v1/chat/completions"
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, json=body, headers=headers)
+    last_status = None
+    last_error_text = None
+
+    for provider_slug, tier in candidates:
+        upstream = dict(body)
+        upstream["provider"] = {"only": [provider_slug]}
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(url, json=upstream, headers=headers)
 
             if resp.status_code != 200:
                 error_text = await resp.aread()
-                logger.error(f"Upstream error {resp.status_code}: {error_text}")
+                logger.error(f"Upstream error {resp.status_code} ({provider_slug}): {error_text}")
                 _router.record_error(provider_slug)
                 ERROR_COUNT += 1
                 latency_ms = int((time.monotonic() - start) * 1000)
@@ -337,11 +403,14 @@ async def _forward_non_stream(
                     model_id, provider_slug, tier, session_id, False,
                     resp.status_code, None, latency_ms, error_text.decode(), None, None,
                 )
-                raise HTTPException(
-                    status_code=resp.status_code,
-                    detail=f"Upstream error: {error_text.decode()}",
-                )
+                last_status = resp.status_code
+                last_error_text = error_text.decode()
+                continue  # try next authorized candidate
+
+            # Success: bind session to the winning provider
             _router.record_success(provider_slug)
+            _router.bind_session(session_id, provider_slug)
+
             response_data = resp.json()
             usage = response_data.get("usage")
             provider_response = response_data.get("provider")
@@ -353,32 +422,51 @@ async def _forward_non_stream(
             )
             return response_data
 
-    except httpx.ConnectError as e:
-        logger.error(f"Connect error to {provider_slug}: {e}")
-        _router.record_error(provider_slug)
-        ERROR_COUNT += 1
-        latency_ms = int((time.monotonic() - start) * 1000)
-        _write_proxy_log(
-            model_id, provider_slug, tier, session_id, False,
-            502, None, latency_ms, str(e), None, None,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=f"Provider {provider_slug} unreachable: {e}",
-        )
-    except httpx.TimeoutException as e:
-        logger.error(f"Timeout connecting to {provider_slug}: {e}")
-        _router.record_error(provider_slug)
-        ERROR_COUNT += 1
-        latency_ms = int((time.monotonic() - start) * 1000)
-        _write_proxy_log(
-            model_id, provider_slug, tier, session_id, False,
-            504, None, latency_ms, str(e), None, None,
-        )
-        raise HTTPException(
-            status_code=504,
-            detail=f"Provider {provider_slug} timeout: {e}",
-        )
+        except httpx.ConnectError as e:
+            logger.error(f"Connect error to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, False,
+                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 502
+            last_error_text = str(e)
+            continue
+
+        except httpx.TimeoutException as e:
+            logger.error(f"Timeout connecting to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, False,
+                504, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 504
+            last_error_text = str(e)
+            continue
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error to {provider_slug}: {e}")
+            _router.record_error(provider_slug)
+            ERROR_COUNT += 1
+            _write_proxy_log(
+                model_id, provider_slug, tier, session_id, False,
+                502, None, int((time.monotonic() - start) * 1000), str(e), None, None,
+            )
+            last_status = 502
+            last_error_text = str(e)
+            continue
+
+    # Exhausted all authorized candidates with no success
+    if last_status is not None:
+        message = f"All authorized providers failed (last: {last_status} {last_error_text})"
+        error_code = last_status
+    else:
+        message = f"No authorized provider available for model {model_id}"
+        error_code = 503
+    logger.error(message)
+    raise HTTPException(status_code=error_code, detail=message)
 
 
 @router.post("/refresh")
