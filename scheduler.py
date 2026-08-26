@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from typing import Optional
 
 from config import config
@@ -80,9 +80,9 @@ class RefreshScheduler:
                     self._next_run = None
                     await self._refresh_all()
                 else:
-                    # next_run is a datetime
+                    # next_run is a datetime (timezone-aware UTC)
                     self._next_run = next_run
-                    now = datetime.utcnow()
+                    now = datetime.now(timezone.utc)
                     delay = (next_run - now).total_seconds()
                     if delay > 0:
                         await asyncio.sleep(delay)
@@ -99,7 +99,7 @@ class RefreshScheduler:
         Returns:
             'immediate' if should refresh now, or datetime for next trigger.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         current_time = now.time()
 
         # Check explicit times
@@ -151,7 +151,7 @@ class RefreshScheduler:
         # Fall back to periodic
         interval = config.refresh_interval_minutes * 60
         next_run = now.timestamp() + interval
-        return datetime.utcfromtimestamp(next_run)
+        return datetime.fromtimestamp(next_run, timezone.utc)
 
     async def _refresh_all(self):
         """Refresh endpoints for all configured models."""
@@ -244,7 +244,7 @@ class RefreshScheduler:
 
                     # Log migration event
                     self._migration_log.append({
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                         "session_id": session_id,
                         "from_provider": changed_provider,
                         "to_provider": best_alternative.get("tag"),
