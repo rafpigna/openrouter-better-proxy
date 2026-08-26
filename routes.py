@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -37,6 +37,10 @@ _handler = logging.FileHandler("logs/proxy.jsonl")
 _handler.setFormatter(logging.Formatter("%(message)s"))
 _proxy_logger.addHandler(_handler)
 
+# Per (session_id, provider) last cached tokens — to detect silent cache drops
+# (same session+provider going from cached>0 to cached=0 across requests).
+_last_cache: dict[tuple[str, str], int] = {}
+
 
 def _write_proxy_log(
     model_id: str,
@@ -51,9 +55,31 @@ def _write_proxy_log(
     provider_response: str | None,
     model_response: str | None,
 ) -> None:
-    """Write a structured JSON line to proxy.jsonl."""
+    """Write a structured JSON line to proxy.jsonl.
+
+    `ts` is the proxy's LOCAL time (LXC is Europe/Rome; uniform with app.log).
+    Detects and flags silent cache loss: same session+provider had cached>0 on
+    a prior request and now returns cached=0 (OpenRouter per-endpoint caching).
+    """
+    global _last_cache
+    tokens_cached = usage.get("prompt_tokens_details", {}).get("cached_tokens") if usage else None
+
+    # Silent cache-drop detection (only meaningful for successful requests)
+    cache_drop = False
+    if status_code == 200 and session_id and tokens_cached is not None:
+        key = (session_id, provider_slug)
+        prev = _last_cache.get(key)
+        cur = int(tokens_cached or 0)
+        if prev is not None and prev > 0 and cur == 0:
+            cache_drop = True
+            logger.warning(
+                f"[CACHE-DROP] session {session_id} provider {provider_slug}: "
+                f"cached {prev} -> 0 (same provider + same session)"
+            )
+        _last_cache[key] = cur
+
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "ts": datetime.now().isoformat(),
         "type": "error" if error_message or (status_code != 200 and status_code != 0) else "request",
         "model": model_id,
         "provider": provider_slug,
@@ -63,13 +89,14 @@ def _write_proxy_log(
         "status": status_code,
         "tokens_in": usage.get("prompt_tokens") if usage else None,
         "tokens_out": usage.get("completion_tokens") if usage else None,
-        "tokens_cached": usage.get("prompt_tokens_details", {}).get("cached_tokens") if usage else None,
+        "tokens_cached": tokens_cached,
         "tokens_reasoning": usage.get("completion_tokens_details", {}).get("reasoning_tokens") if usage else None,
         "cost": usage.get("cost") if usage else None,
         "latency_ms": latency_ms,
         "error": error_message,
         "provider_response": provider_response,
         "model_response": model_response,
+        "cache_drop": cache_drop,
     }
     _proxy_logger.info(json.dumps(entry))
 
