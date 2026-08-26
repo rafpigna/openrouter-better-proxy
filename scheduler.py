@@ -43,6 +43,12 @@ class RefreshScheduler:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._migration_log: list[dict] = []  # Track migration events
+        self._next_run: Optional[datetime] = None  # Next scheduled refresh
+
+    @property
+    def next_run(self) -> Optional[datetime]:
+        """Next scheduled refresh datetime (UTC), or None if not running."""
+        return self._next_run
 
     async def start(self):
         """Start the scheduler."""
@@ -71,9 +77,11 @@ class RefreshScheduler:
             try:
                 next_run = await self._wait_for_next_trigger()
                 if next_run == "immediate":
+                    self._next_run = None
                     await self._refresh_all()
                 else:
                     # next_run is a datetime
+                    self._next_run = next_run
                     now = datetime.utcnow()
                     delay = (next_run - now).total_seconds()
                     if delay > 0:

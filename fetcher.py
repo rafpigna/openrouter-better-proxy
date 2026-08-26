@@ -66,7 +66,12 @@ class EndpointFetcher:
                                 "input_cache_read": pricing.get("input_cache_read", "0"),
                             },
                             "supports_implicit_caching": ep.get("supports_implicit_caching", False),
+                            "status": ep.get("status"),
+                            "quantization": ep.get("quantization"),
                             "uptime_last_30m": ep.get("uptime_last_30m"),
+                            "uptime_last_1d": ep.get("uptime_last_1d"),
+                            "latency_last_30m": ep.get("latency_last_30m"),
+                            "throughput_last_30m": ep.get("throughput_last_30m"),
                         })
 
                     cache_data = {

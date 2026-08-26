@@ -53,6 +53,20 @@ class Config:
             return False
         return bool(enabled)
 
+    @property
+    def sse_log_enabled(self) -> bool:
+        """SSE live log: SOLO se esplicitamente abilitato (config server.sse_log: true o env SSE_LOG_ENABLED=1).
+
+        Default OFF. Se flag/env assenti -> False, nessuna risorsa consumata.
+        """
+        enabled = self.raw.get("server", {}).get("sse_log", False)
+        env_val = os.environ.get("SSE_LOG_ENABLED", "")
+        if env_val in ("1", "true", "True", "on", "ON"):
+            return True
+        if env_val in ("0", "false", "False", "off", "OFF"):
+            return False
+        return bool(enabled)
+
     # --- Models ---
     @property
     def models(self) -> dict[str, Any]:

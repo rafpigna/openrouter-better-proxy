@@ -85,15 +85,20 @@ async def lifespan(app: FastAPI):
 
     # Initialise dashboard components if enabled
     if config.dashboard_enabled:
-        from log_handler import SSELogHandler
         from web_routes import router as web_router, init_web_routes
 
-        # SSELogHandler: capture all INFO+ log records
-        _log_handler = SSELogHandler(level=logging.INFO)
-        _log_handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-        )
-        logging.getLogger().addHandler(_log_handler)
+        # SSELogHandler: SOLO se sse_log esplicitamente abilitato (default OFF)
+        if config.sse_log_enabled:
+            from log_handler import SSELogHandler
+            _log_handler = SSELogHandler(level=logging.INFO)
+            _log_handler.setFormatter(
+                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+            )
+            logging.getLogger().addHandler(_log_handler)
+            logger.info("SSE live log enabled — SSELogHandler attached")
+        else:
+            _log_handler = None
+            logger.info("SSE live log disabled (default) — no SSELogHandler")
 
         # Inject dependencies into web_routes
         init_web_routes(_scheduler, router, _log_handler, fetcher)

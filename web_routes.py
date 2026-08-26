@@ -110,7 +110,7 @@ async def dashboard_index():
 async def api_logs():
     """SSE streaming endpoint for live logs."""
     if _log_handler is None:
-        raise HTTPException(status_code=500, detail="Log handler not initialized")
+        raise HTTPException(status_code=404, detail="SSE live log disabled (set server.sse_log: true or SSE_LOG_ENABLED=1)")
 
     from log_handler import sse_log_generator
 
@@ -318,7 +318,8 @@ async def api_status():
         "migration": migration_info,
         "scheduler": {
             "running": getattr(scheduler, "_running", False),
-        } if scheduler is not None else {"running": False},
+            "next_refresh": scheduler.next_run.replace(tzinfo=timezone.utc).isoformat() if scheduler is not None and getattr(scheduler, "next_run", None) else None,
+        } if scheduler is not None else {"running": False, "next_refresh": None},
     }
 
 
@@ -336,9 +337,13 @@ async def api_system():
     cpu_percent = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage(".")
-    boot_time = datetime.fromtimestamp(
-        psutil.boot_time(), tz=timezone.utc
-    ).isoformat()
+    # In a container, psutil.boot_time() returns the HOST kernel boot (shared /proc/stat btime),
+    # not the container start. Use PID 1 create_time for the real LXC boot time.
+    try:
+        boot_ts = psutil.Process(1).create_time()
+    except Exception:
+        boot_ts = psutil.boot_time()
+    boot_time = datetime.fromtimestamp(boot_ts, tz=timezone.utc).isoformat()
 
     os_data = {
         "platform": "Linux" if psutil.LINUX else os.name,
@@ -702,7 +707,7 @@ async def api_config_delete_model(model_id: str):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/api/config/export")
+@router.api_route("/api/config/export", methods=["GET", "POST"])
 async def api_config_export():
     """Download the current routing_config.yaml."""
     if not CONFIG_YAML_PATH.exists():
@@ -712,6 +717,47 @@ async def api_config_export():
         media_type="application/x-yaml",
         filename="routing_config.yaml",
     )
+
+
+# ---------------------------------------------------------------------------
+# Logs: delete all log files (incl. rotated) — GDPR compliance
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/api/logs")
+async def api_logs_delete_all():
+    """Delete all log files, including rotated/compressed versions (GDPR).
+
+    Active log files (app.log, proxy.jsonl) are TRUNCATED (kept inode) so the
+    FileHandler keeps writing to the same file; rotated/compressed versions
+    (*.log-*, *.jsonl-*, *.gz) are physically removed.
+    """
+    import glob
+    import os
+    logs_dir = BASE_DIR / "logs"
+    truncated = []
+    removed = []
+    # Active files held open by FileHandler: truncate to 0 (keep inode)
+    for name in ("app.log", "proxy.jsonl"):
+        p = logs_dir / name
+        if p.exists():
+            try:
+                with open(p, "w"):
+                    pass
+                truncated.append(name)
+            except OSError as e:
+                logger.error(f"Log truncate failed {name}: {e}")
+    # Rotated/compressed versions: remove physically
+    for pat in ("app.log-*", "app.log.*", "proxy.jsonl-*", "proxy.jsonl.*", "*.gz"):
+        for f in glob.glob(str(logs_dir / pat)):
+            try:
+                os.remove(f)
+                removed.append(os.path.basename(f))
+            except OSError:
+                pass
+    result = {"truncated": truncated, "removed": removed}
+    logger.info(f"Log purge: truncated {truncated}, removed {removed}")
+    return {"status": "ok", "deleted": result, "message": f"Log purge: truncated {len(truncated)}, removed {len(removed)}"}
 
 
 # ---------------------------------------------------------------------------
