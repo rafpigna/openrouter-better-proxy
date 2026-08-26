@@ -104,7 +104,8 @@ class Config:
 
     @property
     def price_change_threshold(self) -> float:
-        return self.raw.get("refresh", {}).get("price_change_threshold", 0.01)
+        # In PERCENT POINTS (10 = 10%, 1 = 1%). Default 1%.
+        return self.raw.get("refresh", {}).get("price_change_threshold", 1.0)
 
     @property
     def refresh_times(self) -> list[Any]:

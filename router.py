@@ -20,6 +20,11 @@ from cache import EndpointCache
 
 logger = logging.getLogger(__name__)
 
+# Prices fetched from OpenRouter API are per-token. The user-facing config
+# (max_price) is expressed in dollars per MILLION tokens. This is the single
+# conversion point for the routing decision.
+PER_MILLION = 1_000_000
+
 
 class Router:
     """Main router: selects best provider for a model + session."""
@@ -88,12 +93,13 @@ class Router:
             completion_price = float(pricing.get("completion", 0) or 0)
             cache_price = float(pricing.get("input_cache_read", 0) or 0)
 
-            # Filter by max_price
-            if prompt_price > max_input:
+            # Filter by max_price. max_price is in $/M tokens, provider prices
+            # are per-token: convert the provider price to $/M for comparison.
+            if prompt_price * PER_MILLION > max_input:
                 continue
-            if completion_price > max_completion:
+            if completion_price * PER_MILLION > max_completion:
                 continue
-            if cache_price > max_cache:
+            if cache_price * PER_MILLION > max_cache:
                 continue
 
             # Filter by backoff health

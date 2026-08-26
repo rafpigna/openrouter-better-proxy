@@ -31,6 +31,22 @@ from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
+# OpenRouter prices are per-token; the dashboard displays them in dollars per
+# MILLION tokens (×1e6, no rounding). Conversion happens only at the display
+# boundary (catalog + endpoints API), never on stored/cached data.
+PER_MILLION = 1_000_000
+
+
+def _to_per_million(value) -> float:
+    """Convert a per-token price (string or number) to $/M tokens.
+
+    Pure scale conversion — no rounding. Returns 0.0 for missing/empty input.
+    """
+    try:
+        return float(value or 0) * PER_MILLION
+    except (TypeError, ValueError):
+        return 0.0
+
 # ---------------------------------------------------------------------------
 # Globals injected by main.py at startup
 # ---------------------------------------------------------------------------
@@ -165,7 +181,8 @@ class MigrationConfig(BaseModel):
 
 class RefreshConfig(BaseModel):
     interval_minutes: int = Field(30, ge=1, le=1440)
-    price_change_threshold: float = Field(0.01, ge=0.0)
+    # In PERCENT POINTS (10 = 10%, default 1 = 1%).
+    price_change_threshold: float = Field(1.0, ge=0.0)
     times: list[Any] = []
 
 
@@ -631,9 +648,9 @@ async def api_models_catalog():
             "name": m.get("name"),
             "context_length": m.get("context_length"),
             "pricing": {
-                "prompt": prompt_price,
-                "completion": completion_price,
-                "input_cache_read": pricing.get("input_cache_read", "0"),
+                "prompt": _to_per_million(prompt_price),
+                "completion": _to_per_million(completion_price),
+                "input_cache_read": _to_per_million(pricing.get("input_cache_read", "0")),
             },
             "free": free,
             "architecture": {
@@ -652,7 +669,11 @@ async def api_models_catalog():
 
 @router.get("/api/models/{model_id:path}/endpoints")
 async def api_model_endpoints(model_id: str):
-    """Return provider endpoints and pricing for a specific model."""
+    """Return provider endpoints and pricing for a specific model.
+
+    Pricing is converted to $/M tokens for display. The underlying cache
+    (fetcher) keeps per-token values untouched.
+    """
     if _fetcher is None:
         raise HTTPException(status_code=500, detail="Endpoint fetcher not initialized")
 
@@ -662,7 +683,22 @@ async def api_model_endpoints(model_id: str):
             status_code=502,
             detail=f"Failed to fetch endpoints for {model_id}",
         )
-    return result
+
+    # Convert pricing to $/M on a display copy — never mutate the cached data.
+    display = dict(result)
+    display_endpoints = []
+    for ep in result.get("endpoints", []):
+        ep_copy = dict(ep)
+        pr = ep.get("pricing") or {}
+        ep_copy["pricing"] = {
+            "prompt": _to_per_million(pr.get("prompt", "0")),
+            "completion": _to_per_million(pr.get("completion", "0")),
+            "input_cache_read": _to_per_million(pr.get("input_cache_read", "0")),
+        }
+        display_endpoints.append(ep_copy)
+    display["endpoints"] = display_endpoints
+
+    return display
 
 
 # ---------------------------------------------------------------------------

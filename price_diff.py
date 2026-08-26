@@ -6,7 +6,31 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from config import config
+
 logger = logging.getLogger(__name__)
+
+# Provider prices from OpenRouter are per-token. The user-facing log prints
+# them in dollars per MILLION tokens (×1e6, no rounding). Internal comparisons
+# stay in the original per-token scale.
+PER_MILLION = 1_000_000
+
+# Human-readable field labels (display only).
+FIELD_NAMES = {
+    "prompt": "Input",
+    "completion": "Completion",
+    "input_cache_read": "Cache",
+}
+
+
+def _fmt_usd(per_million: float) -> str:
+    """Format a $/M value with at most 6 decimals, no trailing zeros.
+
+    Display-only rounding for the human summary line; never rounds stored data.
+    """
+    s = f"{per_million:.6f}"
+    s = s.rstrip("0").rstrip(".")
+    return s or "0"
 
 
 class PriceDiffDetector:
@@ -59,6 +83,12 @@ class PriceDiffDetector:
         new_endpoints = {ep["tag"]: ep for ep in new_cache_data.get("endpoints", [])}
         last_endpoints = {ep["tag"]: ep for ep in last.get("endpoints", [])}
 
+        # Configurable relative threshold, expressed in PERCENT POINTS
+        # (config: 10 = 10%, default 1 = 1%). Previously stored as a 0..1
+        # fraction (0.1 = 10%), which was ambiguous in the UI. rel_diff is a
+        # fraction, so multiply by 100 to compare in percentage points.
+        threshold = config.price_change_threshold
+
         # Check all providers present in both snapshots
         for tag in set(new_endpoints.keys()) & set(last_endpoints.keys()):
             new_ep = new_endpoints[tag]
@@ -74,7 +104,7 @@ class PriceDiffDetector:
                 diff = abs(new_val - last_val)
                 rel_diff = diff / last_val if last_val > 0 else 0
 
-                if rel_diff > 0.01:  # 1% threshold
+                if rel_diff * 100 > threshold:
                     changes.append({
                         "field": field,
                         "old_value": last_val,
@@ -90,6 +120,18 @@ class PriceDiffDetector:
                     "changes": changes,
                 })
                 logger.info(f"Price change detected for {tag}: {changes}")
+                # Human-readable summary in $/M tokens (per-token × 1e6).
+                new_parts = ", ".join(
+                    f"{FIELD_NAMES.get(c['field'], c['field'])} ${_fmt_usd(c['new_value'] * PER_MILLION)}/M"
+                    for c in changes
+                )
+                diff_parts = ", ".join(
+                    f"{FIELD_NAMES.get(c['field'], c['field'])} {'+' if c['new_value'] >= c['old_value'] else '-'}${_fmt_usd(abs(c['new_value'] - c['old_value']) * PER_MILLION)}/M"
+                    for c in changes
+                )
+                logger.info(
+                    f"Price change for {tag} — new: {new_parts} | diff: {diff_parts}"
+                )
 
         # Save new snapshot
         self.save_snapshot(new_cache_data)
