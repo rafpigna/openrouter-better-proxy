@@ -59,3 +59,8 @@ health:
     max_cooldown_seconds: 43200
     escalation_seconds:
       - 3600.0
+
+# Per-provider retry before failing over to the next authorized candidate.
+retry:
+    max_attempts: 3        # total attempts per provider (3 = up to 2 retries)
+    delay_seconds: 2.5     # fixed delay between retry attempts
