@@ -25,7 +25,7 @@ migration:
 
 refresh:
   interval_minutes: 30
-  price_change_threshold: 0.01
+  price_change_threshold: 1
   times:
     - "10:00"
     - "10:05"

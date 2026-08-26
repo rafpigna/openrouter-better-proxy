@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from config import Config
+from config import Config, config
 from backoff import BackoffManager
 from session import SessionManager
 from cache import EndpointCache
@@ -14,8 +14,8 @@ from router import Router
 @pytest.fixture
 def mock_config():
     """Create a mock config with test data."""
-    config = MagicMock()
-    config.get_model_config.return_value = {
+    cfg = MagicMock()
+    cfg.get_model_config.return_value = {
         "quantizations": ["fp8", "fp4"],
         "providers": ["deepseek", "deepinfra", "streamlake", "gmicloud"],
         "max_price": {
@@ -24,17 +24,22 @@ def mock_config():
             "cache": 0.05,
         },
     }
-    return config
+    return cfg
 
 
 @pytest.fixture
-def components(mock_config):
-    """Create router components."""
+def components(mock_config, monkeypatch):
+    """Create router components with a deterministic config.
+
+    The router reads the module-level `config` singleton, so we monkeypatch
+    its get_model_config to the mock (avoiding dependency on the real
+    routing_config.yaml on disk).
+    """
     backoff = BackoffManager()
     sessions = SessionManager()
     cache = EndpointCache(data_dir="/tmp/test-cache")
     router = Router(backoff, sessions, cache)
-    router.config = mock_config  # Inject mock config
+    monkeypatch.setattr(config, "get_model_config", mock_config.get_model_config)
     return router, backoff, sessions, cache
 
 
@@ -45,11 +50,11 @@ class TestRouterSelection:
         """Test selection of best fp8 provider."""
         router, _, _, cache = components
 
-        # Mock endpoints
+        # Mock endpoints (prices per-token)
         endpoints = [
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0786", "completion": "0.15719", "input_cache_read": "0.01572"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.080", "completion": "0.18", "input_cache_read": "0.016"}},
-            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.112", "completion": "0.224", "input_cache_read": "0.0224"}},
+            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -64,10 +69,10 @@ class TestRouterSelection:
         """Test fallback to fp4 when fp8 providers are unavailable."""
         router, backoff, _, cache = components
 
-        # Mock endpoints with only fp4
+        # Mock endpoints with only fp4 (prices per-token)
         endpoints = [
-            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.065", "completion": "0.14", "input_cache_read": "0.014"}},
-            {"tag": "sail-research/fp4", "pricing": {"prompt": "0.065", "completion": "0.18", "input_cache_read": "0.020"}},
+            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+            {"tag": "sail-research/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000018", "input_cache_read": "0.000000020"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -84,10 +89,10 @@ class TestRouterSelection:
         """Test that providers above max_price are filtered."""
         router, _, _, cache = components
 
-        # Mock endpoints with one above max_price
+        # Mock endpoints: deepinfra under cap (0.08 $/M), expensive over cap (0.15 $/M)
         endpoints = [
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.080", "completion": "0.18", "input_cache_read": "0.016"}},
-            {"tag": "expensive/provider", "pricing": {"prompt": "0.15", "completion": "0.30", "input_cache_read": "0.05"}},
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "expensive/provider", "pricing": {"prompt": "0.00000015", "completion": "0.00000030", "input_cache_read": "0.00000005"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -101,8 +106,8 @@ class TestRouterSelection:
         router, _, sessions, cache = components
 
         endpoints = [
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0786", "completion": "0.15719", "input_cache_read": "0.01572"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.080", "completion": "0.18", "input_cache_read": "0.016"}},
+            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -125,10 +130,10 @@ class TestRouterSelection:
         """Test that provider order is respected when prices are equal."""
         router, _, _, cache = components
 
-        # Same price, different providers
+        # Same price, different providers (per-token)
         endpoints = [
-            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.0786", "completion": "0.15719", "input_cache_read": "0.01572"}},
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0786", "completion": "0.15719", "input_cache_read": "0.01572"}},
+            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
