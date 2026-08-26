@@ -300,7 +300,7 @@ Controls how often the proxy fetches updated pricing from OpenRouter.
 ```yaml
 refresh:
   interval_minutes: 30                 # Periodic refresh interval
-  price_change_threshold: 0.01         # Relative threshold (1%) to detect price changes
+  price_change_threshold: 1         # Price-change threshold in % (10 = 10%)
   times:                               # Explicit refresh times (can be dense)
     - "10:00"
     - "10:05"

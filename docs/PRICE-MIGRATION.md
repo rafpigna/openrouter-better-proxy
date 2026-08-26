@@ -102,8 +102,8 @@ Response includes:
 
 ### Before Price Change
 
-| Provider | Input | Cache Read | Completion |
-|----------|-------|------------|------------|
+| Provider | Input ($/M) | Cache Read ($/M) | Completion ($/M) |
+|----------|------------|------------------|------------------|
 | deepinfra/fp8 | 0.08 | 0.016 | 0.18 |
 | streamlake/fp8 | 0.0786 | 0.01572 | 0.15719 |
 
@@ -113,8 +113,8 @@ Streamlake is cheaper but deepinfra is sticky (session started there).
 
 DeepInfra raises prices to on-peak rates:
 
-| Provider | Input | Cache Read | Completion |
-|----------|-------|------------|------------|
+| Provider | Input ($/M) | Cache Read ($/M) | Completion ($/M) |
+|----------|------------|------------------|------------------|
 | deepinfra/fp8 | 0.16 | 0.032 | 0.36 |
 | streamlake/fp8 | 0.0786 | 0.01572 | 0.15719 |
 
@@ -127,18 +127,16 @@ DeepInfra raises prices to on-peak rates:
 
 ## Disabling Migration
 
-To disable migration entirely:
+To disable migration entirely, set `migration.enabled` to `false` in
+`routing_config.yaml`:
 
 ```yaml
 migration:
   enabled: false
 ```
 
-Or set environment variable:
-
-```bash
-export ORBP_MIGRATION_ENABLED=false
-```
+(There is no separate environment variable — migration is controlled only via
+the config file.)
 
 ## Manual Refresh
 

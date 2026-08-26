@@ -104,7 +104,7 @@ models:
   "deepseek/deepseek-v4-flash-0731":
     quantizations: ["fp8", "fp4"]      # Priority order (tiered)
     providers: ["deepseek", "deepinfra", "streamlake", "gmicloud"]
-    max_price:
+    max_price:                     # $/M token (dollars per million tokens)
       input: 0.10
       completion: 0.25
       cache: 0.05
@@ -118,7 +118,7 @@ migration:
 
 refresh:
   interval_minutes: 30
-  price_change_threshold: 0.01
+  price_change_threshold: 1        # Price-change threshold in % (10 = 10%)
   times:
     - "10:00"
     - "10:05"
