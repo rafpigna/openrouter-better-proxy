@@ -53,7 +53,7 @@ _ANTHROPIC_REASONING_OPTIONAL_SUBSTRINGS = (
     "claude-3",          # 3, 3.5, 3.7
     "claude-opus-4-0", "claude-opus-4.0", "claude-opus-4-1", "claude-opus-4.1",
     "claude-sonnet-4-0", "claude-sonnet-4.0",
-    "claude-opus-4-2025", "claude-opus-4-2025",  # date-stamped 4.0 IDs
+    "claude-opus-4-2025", "claude-sonnet-4-2025",  # date-stamped 4.0 IDs
     "claude-opus-4-5", "claude-opus-4.5",
     "claude-sonnet-4-5", "claude-sonnet-4.5",
     "claude-haiku-4-5", "claude-haiku-4.5",
@@ -196,6 +196,16 @@ class OpenRouterBetterProxyProfile(ProviderProfile):
         return extra_body, top_level
 
 
+# OpenRouter app attribution (mirror of agent.auxiliary_client._OR_HEADERS_BASE,
+# which Hermes attaches only when base_url matches openrouter.ai). Through the
+# proxy the dashboard otherwise shows "App: Unknown" because the custom
+# base_url takes the generic branch in run_agent._apply_client_headers_for_base_url.
+_APP_ATTRIBUTION_HEADERS = {
+    "HTTP-Referer": "https://hermes-agent.nousresearch.com",
+    "X-Title": "Hermes Agent",
+    "X-OpenRouter-Categories": "productivity,cli-agent",
+}
+
 openrouter_better_proxy = OpenRouterBetterProxyProfile(
     name="openrouter-better-proxy",
     aliases=("orbp",),
@@ -205,6 +215,7 @@ openrouter_better_proxy = OpenRouterBetterProxyProfile(
     signup_url="",
     base_url=_get_proxy_url(),
     models_url=_get_proxy_url() + "/models",
+    default_headers=_APP_ATTRIBUTION_HEADERS,
     fallback_models=(
         "deepseek/deepseek-v4-flash-0731",
         "anthropic/claude-sonnet-4.6",
