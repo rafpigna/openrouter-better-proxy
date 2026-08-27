@@ -47,6 +47,7 @@ The **Openrouter Better Proxy** was designed to work specifically with Hermes Ag
 | Disk | 500 MB | 1 GB |
 | CPU | 0.5 core | 1 core |
 | Python | 3.11+ | 3.11+ |
+| Network stack | `httpx[http2]` (persistent connections, HTTP/2 to OpenRouter when negotiated) | same |
 | OpenRouter API key | Required | — |
 
 The proxy is designed to run on a always-on machine — a VM, LXC container, or a machine that stays on alongside Hermes. It uses minimal resources (well under 100 MB RAM at steady state).
@@ -228,8 +229,12 @@ The proxy is configured via `routing_config.yaml`. All paths are relative to the
 
 ```yaml
 server:
-  host: "0.0.0.0"   # Bind address (use "127.0.0.1" for local-only)
-  port: 8787         # Listening port
+  host: "0.0.0.0"          # Bind address (use "127.0.0.1" for local-only)
+  port: 8787                # Listening port
+  dashboard: true           # Web dashboard on/off
+  sse_log: false            # Real-time SSE log page (default off; env SSE_LOG_ENABLED=1 overrides)
+  debug_log: false          # Debug request recorder (see Debug Request Log below; env DEBUG_REQUEST_LOG=1 overrides)
+  # debug_max_body_chars: 200000   # optional cap per stored body in requests.jsonl (hashes always full)
 ```
 
 ### Model configuration
@@ -355,6 +360,26 @@ retry:
 
 These settings are also editable from the dashboard, at **Proxy Settings → 🔁 Retry**.
 
+#### App attribution settings
+
+Controls how OpenRouter app-attribution headers (`HTTP-Referer`, `X-Title`) are attached to upstream requests. The proxy forwards client headers verbatim (see Debug section); these settings only matter for clients that do **not** send attribution themselves when using a custom base_url (they would show as "App: Unknown" on OpenRouter).
+
+```yaml
+attribution:
+  mode: passthrough       # passthrough | fallback | force
+  headers:                # used only by fallback/force
+    HTTP-Referer: https://openwebui.com
+    X-Title: OpenWebUI
+```
+
+- `passthrough` (default) — client headers win, nothing is added.
+- `fallback` — adds a configured header **only** when the client did not send that same header.
+- `force` — always overwrites with the configured values.
+
+The bundled Hermes plugin already carries its own attribution via `default_headers` in the provider profile, so Hermes traffic is attributed correctly even through the proxy without any extra config.
+
+Editable from the dashboard, at **Proxy Settings → 🏷 App Attribution**.
+
 ---
 
 ## Usage
@@ -382,19 +407,16 @@ response = client.chat.completions.create(
 )
 ```
 
-### Important: OpenRouter Presets Not Supported
+### Preset model IDs (experimental planning)
 
-The proxy does **not** support OpenRouter preset model IDs (e.g., `deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash`).
+The proxy currently routes by **base model ID** (e.g. `deepseek/deepseek-v4-flash-0731`) and pins the winning provider via `provider.only`. OpenRouter **preset** slugs (`model@preset/name`) are therefore not used as request targets today.
 
-**Why:** Presets are OpenRouter's abstraction for model variants. The proxy's routing logic operates on exact model IDs and would create a double-routing layer if presets were supported — defeating the purpose of having a local proxy.
+> **Planned feature (preset routing):** an alternative routing strategy where you pre-create named presets on your OpenRouter account (one per provider) and the proxy selects among them with its price/health logic, rewriting only the `model` field. See the design document for status. This section will be updated when it ships.
 
-**What the proxy does instead:** The proxy provides all the benefits a preset offers (quantization tier selection, provider stickiness, price optimization) with far more flexibility through `routing_config.yaml`.
-
-**Configuration:** Always use the base model ID without preset suffix:
+**Configuration:** always use the base model ID without preset suffix:
 ```yaml
 model:
   default: deepseek/deepseek-v4-flash-0731  # ✅ Correct
-  # default: deepseek/deepseek-v4-flash-0731@preset/preset-name  # ❌ Not supported
   provider: openrouter-better-proxy
 ```
 
@@ -447,10 +469,21 @@ curl http://localhost:8787/status
 | `/api/system` | GET | OS metrics (CPU, RAM, disk) |
 | `/api/refresh` | POST | Trigger price refresh |
 | `/api/restart` | POST | Restart the service |
+| `/api/logs/download` | GET | Download logs (JSONL/CSV/TXT, filters) |
+| `/api/logs/recent` | GET | Last N structured proxy log entries (polling) |
+| `/api/models/catalog` | GET | OpenRouter model catalog (on-demand) |
+| `/api/config/export` / `import` | POST | Config export / import with backup |
+| `/api/debug/toggle` | POST | Enable/disable the debug request recorder (hot) |
 
 ### Logs
 
-Logs are written to both stdout and `logs/app.log` (relative to the proxy working directory).
+| File | Content |
+|---|---|
+| `logs/app.log` | Application log (text; routing decisions, errors, price changes) — also on stdout |
+| `logs/proxy.jsonl` | Structured one-line-per-request record: model, provider, tokens, cost, cached tokens, latency, error, `cache_drop` flag |
+| `logs/requests.jsonl` | Debug request recorder output (see below), only while enabled |
+
+Rotated files keep the same names with a date suffix (`proxy.jsonl-YYYYMMDD`). **Delete All Logs** from the dashboard truncates active files and removes rotated ones (GDPR-friendly purge).
 
 ```bash
 # Follow logs in real-time
@@ -461,6 +494,24 @@ sudo journalctl -u openrouter-better-proxy -f
 ```
 
 Log levels: `INFO` (default), `DEBUG` (set `LOG_LEVEL=debug` in environment).
+
+#### `cache_drop` detection
+
+For every successful request the proxy remembers `(session_id, provider) → cached_tokens`. When the same session+provider reports a cache hit previously and then `cached=0`, the record is flagged `"cache_drop": true` and a `[CACHE-DROP]` warning is written to `app.log`. This makes silent prompt-cache losses visible without digging through OpenRouter's activity page.
+
+### Debug Request Log (cache-drop diagnostics)
+
+A dedicated recorder that captures **full raw bodies** for post-mortem analysis:
+
+- Enable: Dashboard → Proxy Settings → 🐞 Debug Request Log (hot toggle, no restart), or `server.debug_log: true`, or env `DEBUG_REQUEST_LOG=1`.
+- While ON, a red banner is shown on every dashboard page; enabling requires an explicit confirmation modal because **all message content passing through the proxy is recorded in clear text**.
+- Disabling stops new recordings but does NOT delete existing data — the UI offers to purge the logs immediately.
+- Records (`logs/requests.jsonl`, correlated by `req_id`):
+  - `req_in` — full incoming body + canonical messages hash + per-message fingerprints + attribution headers (Authorization is NEVER recorded)
+  - `req_out` — exact upstream body per attempt including the provider pin
+  - `res` — status, full usage (`cached_tokens`!), provider/model response
+- Rotation mirrors `proxy.jsonl`; optional size cap via `server.debug_max_body_chars` (hashes always computed over full content).
+- Companion analyzer: see project docs (`analyze_cache_drops.py`) for prefix-divergence classification of drops.
 
 ### Status endpoint
 
@@ -549,9 +600,12 @@ Open `http://<host>:<port>/dashboard/` in your browser.
 
 ### Sections
 
-- **Dashboard** — system overview cards (models, sessions, providers, errors), OS metrics (CPU, RAM, disk) with configurable polling interval (5-60s), and live log streaming via SSE.
-- **Configuration** — web form to view and edit `routing_config.yaml`. Changes are saved with automatic timestamped backups.
-- **Service Controls** — trigger price refresh, restart the service, view scheduler status and migration log.
+- **Dashboard** — system overview cards (models, sessions, providers, errors), OS metrics with polling interval, Recent Activity table (structured proxy log entries: model, provider, tier, tokens, cache, cost, latency, status) and action buttons.
+- **Models** — add/edit/remove models from config; provider picker fetching live prices/quantization/uptime from OpenRouter; per-model price caps.
+- **Proxy Settings** — Migration, Refresh timer, Health, 🔁 Retry, 🏷 App Attribution, 🐞 Debug Request Log.
+- **Logs** — paginated structured log with filters (model/provider/status/session/date) + downloads (JSONL/CSV/TXT) + Delete All Logs (GDPR).
+- **Service Controls** — price refresh, restart, export/import config, scheduler status, migration log.
+- Red global banner "DEBUG MODE IS ON" appears on every page while the debug recorder is active.
 
 ### Enable / Disable
 
