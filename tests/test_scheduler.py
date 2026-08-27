@@ -24,7 +24,9 @@ def components():
     router = Router(backoff, sessions, cache)
     fetcher = EndpointFetcher(api_key="test-key", cache=cache)
     diff_detector = PriceDiffDetector(snapshot_dir="/tmp/test-snapshots")
-    scheduler = RefreshScheduler(fetcher, cache, diff_detector, router, sessions)
+    scheduler = RefreshScheduler(
+        fetcher, cache, diff_detector, router, sessions, PriceMigration()
+    )
     return scheduler, fetcher, cache, diff_detector
 
 
