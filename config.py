@@ -139,6 +139,33 @@ class Config:
         """Fixed delay between retry attempts (seconds)."""
         return float(self.raw.get("retry", {}).get("delay_seconds", 0))
 
+    # --- App attribution (HTTP-Referer / X-Title etc. towards OpenRouter) ---
+    @property
+    def attribution_mode(self) -> str:
+        """How attribution headers are attached upstream:
+
+        - passthrough (default): forward whatever the client sent, add nothing
+        - fallback: add configured headers ONLY when the client did not send them
+          (fixes clients that attribute only when talking to openrouter.ai directly,
+           e.g. OpenWebUI via a custom base_url)
+        - force: always overwrite the configured headers, whatever the client sent
+
+        In fallback/force an empty/missing `headers` map means "nothing to do".
+        """
+        mode = str(self.raw.get("attribution", {}).get("mode", "passthrough")).strip().lower()
+        return mode if mode in ("passthrough", "fallback", "force") else "passthrough"
+
+    @property
+    def attribution_headers(self) -> dict[str, str]:
+        """Configured attribution header map (e.g. HTTP-Referer, X-Title).
+
+        Keys are normalized case-insensitively by the consumer.
+        """
+        h = self.raw.get("attribution", {}).get("headers", {})
+        if not isinstance(h, dict):
+            return {}
+        return {str(k): str(v) for k, v in h.items() if v}
+
     # --- Secrets ---
     @property
     def openrouter_api_key(self) -> str:
