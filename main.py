@@ -19,7 +19,7 @@ from fetcher import EndpointFetcher
 from price_diff import PriceDiffDetector
 from migration import PriceMigration
 from scheduler import RefreshScheduler
-from routes import router as routes_router, init_routes
+from routes import router as routes_router, init_routes, close_http_client
 
 # Configure logging
 import os
@@ -134,6 +134,7 @@ async def lifespan(app: FastAPI):
     # Stop scheduler on shutdown
     await _scheduler.stop()
     await fetcher.close()
+    await close_http_client()
 
 
 # Create main app with lifespan

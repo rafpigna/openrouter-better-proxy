@@ -39,6 +39,43 @@ _handler = logging.FileHandler("logs/proxy.jsonl")
 _handler.setFormatter(logging.Formatter("%(message)s"))
 _proxy_logger.addHandler(_handler)
 
+# Persistent upstream client (fix A): one shared AsyncClient with connection
+# pooling / keep-alive, mirroring the OpenAI SDK behaviour of direct clients.
+# Creating a fresh TCP+TLS connection per attempt differs from every native
+# client and may affect provider-side session affinity. Closed in main.py
+# lifespan shutdown via close_http_client().
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Return the shared upstream client (created lazily on first use).
+
+    http2 enabled when the optional `h2` package is installed (fix B):
+    mirrors the SDK path where openai[http2] negotiates HTTP/2.
+    """
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        try:
+            _http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(120.0),
+                http2=True,
+                limits=httpx.Limits(max_keepalive_connections=10,
+                                    keepalive_expiry=300.0),
+            )
+            logger.info("Upstream client: persistent, HTTP/2 enabled")
+        except TypeError:  # very old httpx without http2 kwarg
+            _http_client = httpx.AsyncClient(timeout=120.0)
+            logger.info("Upstream client: persistent (h2 unavailable)")
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """Gracefully close the shared client (called from lifespan shutdown)."""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+    _http_client = None
+
 # Per (session_id, provider) last cached tokens — to detect silent cache drops
 # (same session+provider going from cached>0 to cached=0 across requests).
 _last_cache: dict[tuple[str, str], int] = {}
@@ -234,93 +271,80 @@ async def _forward_stream(
                 await asyncio.sleep(delay)
 
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    async with client.stream("POST", url, json=upstream, headers=headers) as resp:
-                        if resp.status_code != 200:
-                            err_body = await resp.aread()
-                            provider_status = resp.status_code
-                            provider_text = err_body.decode()
-                            logger.warning(
-                                f"Attempt {attempt}/{max_attempts} {provider_slug}: "
-                                f"HTTP {resp.status_code} (treating as "
-                                f"{'retryable' if _is_transient_status(resp.status_code) else 'definitive'})"
-                            )
-                            # Definitive 4xx: no retry, failover now
-                            if not _is_transient_status(resp.status_code):
-                                break
-                            # Transient: try again (next attempt)
-                            continue
+                client = _get_http_client()
+                async with client.stream("POST", url, json=upstream, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        err_body = await resp.aread()
+                        provider_status = resp.status_code
+                        provider_text = err_body.decode()
+                        logger.warning(
+                            f"Attempt {attempt}/{max_attempts} {provider_slug}: "
+                            f"HTTP {resp.status_code} (treating as "
+                            f"{'retryable' if _is_transient_status(resp.status_code) else 'definitive'})"
+                        )
+                        # Definitive 4xx: no retry, failover now
+                        if not _is_transient_status(resp.status_code):
+                            break
+                        # Transient: try again (next attempt)
+                        continue
 
-                        # Success: bind session to the winning provider
-                        _router.record_success(provider_slug)
-                        _router.bind_session(session_id, provider_slug)
+                    # Success: bind session to the winning provider
+                    _router.record_success(provider_slug)
+                    _router.bind_session(session_id, provider_slug)
 
-                        usage = None
-                        provider_response = None
-                        model_response = None
+                    usage = None
+                    provider_response = None
+                    model_response = None
 
-                        try:
-                            # Stream SSE chunks byte-by-byte. Upstream already sends
-                            # "data: {...}" format, pass through as-is.
-                            async for line in resp.aiter_lines():
-                                if not line:
-                                    continue
-                                if "OPENROUTER PROCESSING" in line:
-                                    logger.debug(f"Skipping upstream status message: {line[:100]}")
-                                    continue
-                                if line.startswith("data: ") and line[6:] != "[DONE]":
-                                    try:
-                                        chunk = json.loads(line[6:])
-                                        if "usage" in chunk:
-                                            usage = chunk["usage"]
-                                        if provider_response is None and chunk.get("provider"):
-                                            provider_response = chunk.get("provider")
-                                        if model_response is None and chunk.get("model"):
-                                            model_response = chunk.get("model")
-                                    except json.JSONDecodeError:
-                                        pass
-                                yield f"{line}\n\n"
-                        except (httpx.ReadError, httpx.ProtocolError, httpx.HTTPError) as e:
-                            # Mid-stream failure: not revocable (DESIGN §4). Log it
-                            # as an error and cut the stream.
-                            _router.record_error(provider_slug)
-                            ERROR_COUNT += 1
-                            debug_log.hook_response(
-                                req_id, provider_slug, 502, None,
-                                provider_response, model_response,
-                                int((time.monotonic() - start) * 1000),
-                                f"mid-stream: {e}",
-                            )
-                            _write_proxy_log(
-                                model_id, provider_slug, tier, session_id, True,
-                                502, None, int((time.monotonic() - start) * 1000),
-                                f"mid-stream: {e}", provider_response, model_response,
-                            )
-                            error_data = {
-                                "error": {
-                                    "message": f"Provider {provider_slug} stream interrupted: {e}",
-                                    "type": "stream_error",
-                                }
+                    try:
+                        # Stream SSE chunks byte-by-byte. Upstream already sends
+                        # "data: {...}" format, pass through as-is.
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            if "OPENROUTER PROCESSING" in line:
+                                logger.debug(f"Skipping upstream status message: {line[:100]}")
+                                continue
+                            if line.startswith("data: ") and line[6:] != "[DONE]":
+                                try:
+                                    chunk = json.loads(line[6:])
+                                    if "usage" in chunk:
+                                        usage = chunk["usage"]
+                                    if provider_response is None and chunk.get("provider"):
+                                        provider_response = chunk.get("provider")
+                                    if model_response is None and chunk.get("model"):
+                                        model_response = chunk.get("model")
+                                except json.JSONDecodeError:
+                                    pass
+                            yield f"{line}\n\n"
+                    except (httpx.ReadError, httpx.ProtocolError, httpx.HTTPError) as e:
+                        # Mid-stream failure: not revocable (DESIGN §4). Log it
+                        # as an error and cut the stream.
+                        _router.record_error(provider_slug)
+                        ERROR_COUNT += 1
+                        debug_log.hook_response(
+                            req_id, provider_slug, 502, None,
+                            provider_response, model_response,
+                            int((time.monotonic() - start) * 1000),
+                            f"mid-stream: {e}",
+                        )
+                        _write_proxy_log(
+                            model_id, provider_slug, tier, session_id, True,
+                            502, None, int((time.monotonic() - start) * 1000),
+                            f"mid-stream: {e}", provider_response, model_response,
+                        )
+                        error_data = {
+                            "error": {
+                                "message": f"Provider {provider_slug} stream interrupted: {e}",
+                                "type": "stream_error",
                             }
-                            yield f"data: {json.dumps(error_data)}\n\n"
-                            yield "data: [DONE]\n\n"
-                            return
-                        except asyncio.CancelledError:
-                            # Client disconnected / aborted the stream. The upstream
-                            # request DID happen (and may be billed), so log it.
-                            debug_log.hook_response(
-                                req_id, provider_slug, 200, usage,
-                                provider_response, model_response,
-                                int((time.monotonic() - start) * 1000),
-                            )
-                            _write_proxy_log(
-                                model_id, provider_slug, tier, session_id, True,
-                                200, usage, int((time.monotonic() - start) * 1000),
-                                None, provider_response, model_response,
-                            )
-                            raise
-
-                        # End of stream — write proxy log
+                        }
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    except asyncio.CancelledError:
+                        # Client disconnected / aborted the stream. The upstream
+                        # request DID happen (and may be billed), so log it.
                         debug_log.hook_response(
                             req_id, provider_slug, 200, usage,
                             provider_response, model_response,
@@ -331,8 +355,21 @@ async def _forward_stream(
                             200, usage, int((time.monotonic() - start) * 1000),
                             None, provider_response, model_response,
                         )
-                        yield "data: [DONE]\n\n"
-                        return
+                        raise
+
+                    # End of stream — write proxy log
+                    debug_log.hook_response(
+                        req_id, provider_slug, 200, usage,
+                        provider_response, model_response,
+                        int((time.monotonic() - start) * 1000),
+                    )
+                    _write_proxy_log(
+                        model_id, provider_slug, tier, session_id, True,
+                        200, usage, int((time.monotonic() - start) * 1000),
+                        None, provider_response, model_response,
+                    )
+                    yield "data: [DONE]\n\n"
+                    return
 
             except httpx.ConnectError as e:
                 provider_status = 502
@@ -506,8 +543,8 @@ async def _forward_non_stream(
                 await asyncio.sleep(delay)
 
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    resp = await client.post(url, json=upstream, headers=headers)
+                client = _get_http_client()
+                resp = await client.post(url, json=upstream, headers=headers)
 
                 if resp.status_code != 200:
                     err_body = await resp.aread()
