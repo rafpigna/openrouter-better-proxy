@@ -407,13 +407,33 @@ response = client.chat.completions.create(
 )
 ```
 
-### Preset model IDs (experimental planning)
+### Preset routing (per-model `strategy: presets`)
 
-The proxy currently routes by **base model ID** (e.g. `deepseek/deepseek-v4-flash-0731`) and pins the winning provider via `provider.only`. OpenRouter **preset** slugs (`model@preset/name`) are therefore not used as request targets today.
+The proxy routes by **base model ID** (e.g. `deepseek/deepseek-v4-flash-0731`). By default (`strategy: providers`, implicit) it pins the winning provider via a body `provider.only` object.
 
-> **Planned feature (preset routing):** an alternative routing strategy where you pre-create named presets on your OpenRouter account (one per provider) and the proxy selects among them with its price/health logic, rewriting only the `model` field. See the design document for status. This section will be updated when it ships.
+With `strategy: presets`, each forwarding attempt instead targets an OpenRouter **preset slug**: the outgoing body swaps **only** the `model` field to `<base-model>@preset/<name>` and carries **no** `provider` pin — mirroring what your direct-to-OpenRouter clients send when they use presets. This is useful because some clients cannot use preset slugs as model names, while the proxy keeps its own price/health/failover logic on top.
 
-**Configuration:** always use the base model ID without preset suffix:
+```yaml
+models:
+  deepseek/deepseek-v4-flash-0731:
+    quantizations: [fp8]
+    providers: [deepinfra, streamlake]        # candidates + their order (allowlist)
+    max_price: {input: 0.25, completion: 0.7, cache: 0.22}
+    strategy: presets                          # "providers" = default behaviour
+    presets:                                   # provider BASE -> preset slug
+      deepinfra: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-deepinfra
+      streamlake: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-streamlake
+```
+
+How it behaves:
+
+- The winning candidate's provider **base** (e.g. `deepinfra` from tag `deepinfra/fp8`) is looked up in `presets`; the request goes out with that slug as `model`.
+- A provider without a mapping is **skipped**; if no candidate has one, the proxy returns an honest `>=500` error (never a silent fallback to an unmapped provider).
+- Failover works across mapped presets in candidate order; transient errors are retried per provider as usual.
+- Routing, backoff, session stickiness, migration and prices stay keyed on the **base model** and provider tags — a preset renamed or deleted on OpenRouter does not corrupt health/price state (a deleted preset surfaces as upstream 404, treated as definitive for that candidate).
+- Config validation rejects malformed entries (mapping key containing `/`, slug without `@preset/`, `strategy: presets` with empty mapping). The dashboard Models card exposes both keys.
+
+**Configuration:** clients always address the proxy by the base model ID without preset suffix:
 ```yaml
 model:
   default: deepseek/deepseek-v4-flash-0731  # ✅ Correct
