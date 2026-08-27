@@ -28,6 +28,19 @@ logger = logging.getLogger(__name__)
 PER_MILLION = 1_000_000
 
 
+def _norm_base(provider_name: str) -> str:
+    """Normalize a provider reference to its BASE name.
+
+    Config `providers` may be written either as base names ("deepinfra") or as
+    full endpoint tags ("z-ai/fp8") depending on whether the entry was hand-
+    written or saved from the dashboard. Endpoint tags always arrive as
+    "base[/quant]". Comparisons happen on the normalized BASE form so both
+    spellings work interchangeably.
+    """
+    p = (provider_name or "").strip()
+    return p.split("/")[0] if "/" in p else p
+
+
 class Router:
     """Main router: selects the ordered list of authorized providers for a request."""
 
@@ -166,12 +179,16 @@ class Router:
                 continue
 
             # ALLOWLIST GATE: never use a provider that isn't in the configured
-            # list, no matter how cheap/healthy it is.
-            base = tag.split("/")[0] if "/" in tag else tag
-            if base not in provider_order:
+            # list, no matter how cheap/healthy it is. Both sides are normalized
+            # to the provider BASE so config entries written as full tags
+            # ("z-ai/fp8", dashboard-saved) match endpoint tags ("z-ai/fp8")
+            # exactly like hand-written base names ("z-ai").
+            base = _norm_base(tag)
+            cfg_bases = [_norm_base(p) for p in provider_order]
+            if base not in cfg_bases:
                 logger.debug(f"Provider {tag} not in allowlist {provider_order}; excluded")
                 continue
-            provider_idx = provider_order.index(base)
+            provider_idx = cfg_bases.index(base)
 
             candidates.append({
                 "slug": tag,

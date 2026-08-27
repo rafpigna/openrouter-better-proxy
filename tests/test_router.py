@@ -256,5 +256,57 @@ class TestBackoffManager:
         assert not bm.is_cooldown("test-provider")
 
 
+class TestAllowlistBaseNormalization:
+    """Regression (2026-08-27): config `providers` written as FULL TAGS
+    ("z-ai/fp8", dashboard-saved) used to fail the allowlist gate, because
+    the gate compared the endpoint BASE ("z-ai") against raw config entries
+    -> HTTP 400 "No authorized provider available" although endpoints were
+    healthy and within max_price."""
+
+    def _router_with_tag_config(self, monkeypatch, providers_list):
+        from config import config
+        backoff = BackoffManager()
+        sessions = SessionManager()
+        cache = EndpointCache(data_dir="data/test-cache-basenorm")
+        router = Router(backoff, sessions, cache)
+        monkeypatch.setattr(config, "get_model_config",
+                            lambda mid: {
+                                "quantizations": ["fp8"],
+                                "providers": providers_list,
+                                "max_price": {"input": 0.10, "completion": 0.30, "cache": 0.05},
+                            })
+        return router, cache
+
+    def test_norm_base_helper(self):
+        from router import _norm_base
+        assert _norm_base("z-ai/fp8") == "z-ai"
+        assert _norm_base("z-ai") == "z-ai"
+        assert _norm_base("  gmicloud/fp8 ") == "gmicloud"
+        assert _norm_base("") == ""
+
+    def test_full_tag_providers_are_matched(self, monkeypatch):
+        router, cache = self._router_with_tag_config(
+            monkeypatch, ["z-ai/fp8", "novita/fp8", "gmicloud/fp8"])
+        eps = [
+            {"tag": "z-ai/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
+            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},  # NOT authorized
+        ]
+        cache.set("m/m1", {"endpoints": eps, "fetched_at": datetime.utcnow().isoformat()})
+        assert router.select_candidates("m/m1") == [("z-ai/fp8", "fp8")]
+
+    def test_priority_order_preserved_across_mixed_forms(self, monkeypatch):
+        # Mixed spelling forms in one list; priority follows the LIST ORDER
+        # after normalization (novita listed first -> novita wins).
+        router, cache = self._router_with_tag_config(
+            monkeypatch, ["novita/fp8", "z-ai"])
+        eps = [
+            {"tag": "z-ai/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
+            {"tag": "novita/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000025", "input_cache_read": "0.000000015"}},
+        ]
+        cache.set("m/m1", {"endpoints": eps, "fetched_at": datetime.utcnow().isoformat()})
+        result = router.select_candidates("m/m1")
+        assert [c[0] for c in result] == ["novita/fp8", "z-ai/fp8"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
