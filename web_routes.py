@@ -23,7 +23,7 @@ import yaml
 from config import config
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Logger
@@ -170,6 +170,48 @@ class ModelConfig(BaseModel):
     quantizations: list[str] = Field(..., min_length=1)
     providers: list[str] = Field(..., min_length=1)
     max_price: MaxPriceModel = Field(...)
+    # Per-model routing strategy (optional):
+    #   - "providers" / absent: pin attempts via body `provider.only` (default)
+    #   - "presets": swap ONLY the outgoing `model` to the mapped OpenRouter
+    #     preset slug per candidate provider-base (body carries no `provider`)
+    strategy: Optional[str] = Field(None)
+    # Mapping provider-BASE -> preset slug, e.g.
+    #   deepinfra: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-deepinfra
+    presets: Optional[dict[str, str]] = Field(None)
+
+    @field_validator("strategy")
+    @classmethod
+    def _strategy_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = (v or "").strip().lower()
+        if v not in ("providers", "presets"):
+            raise ValueError("strategy must be 'providers' or 'presets'")
+        return v
+
+    @field_validator("presets")
+    @classmethod
+    def _presets_valid(cls, v: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+        if v is None:
+            return v
+        out: dict[str, str] = {}
+        for k, slug in v.items():
+            if not isinstance(k, str) or "/" in k or not k.strip():
+                raise ValueError("presets keys must be provider BASE names (e.g. deepinfra)")
+            s = (slug or "").strip()
+            if "@preset/" not in s:
+                raise ValueError(
+                    f"presets['{k}'] must be an OpenRouter preset slug "
+                    f"(<base-model>@preset/<name>, got '{s}')"
+                )
+            out[k.strip()] = s
+        return out or None
+
+    @model_validator(mode="after")
+    def _presets_strategy_coherent(self) -> "ModelConfig":
+        if self.strategy == "presets" and not self.presets:
+            raise ValueError("strategy 'presets' requires a non-empty 'presets' mapping")
+        return self
 
 
 class MigrationConfig(BaseModel):

@@ -31,6 +31,35 @@ _endpoint_cache: Optional[EndpointCache] = None
 REQUEST_COUNT = 0
 ERROR_COUNT = 0
 
+# --- Preset routing (per-model strategy: "presets") --------------------------
+# When a model is configured with `strategy: presets`, each forwarding attempt
+# targets an OpenRouter PRESET slug instead of pinning `provider.only`: the
+# preset itself fixes provider+quantization on OpenRouter's side, so the
+# outgoing body changes ONLY in the `model` field and carries NO `provider`
+# object (mirrors what direct-to-OR clients do with preset slugs).
+# Routing/backoff/migration stay keyed on the BASE model id + provider tags,
+# so health and price logic survive preset renames on OpenRouter.
+def _is_preset_mode(model_id: str) -> bool:
+    """True when the model is configured with strategy: presets."""
+    mc = config.get_model_config(model_id) or {}
+    return mc.get("strategy") == "presets"
+
+
+def _preset_slug_for(model_id: str, provider_tag: str) -> Optional[str]:
+    """Resolve the preset slug mapped to the provider BASE of `provider_tag`.
+
+    Mapping keys are provider bases (e.g. "deepinfra" for tag "deepinfra/fp8").
+    Returns None when the model has no mapping for this provider.
+    """
+    mc = config.get_model_config(model_id) or {}
+    pmap = mc.get("presets") or {}
+    base = provider_tag.split("/")[0] if "/" in provider_tag else provider_tag
+    slug = pmap.get(base)
+    if isinstance(slug, str) and slug.strip():
+        return slug.strip()
+    return None
+
+
 # Proxy logger (writes structured JSON Lines to logs/proxy.jsonl)
 _proxy_logger = logging.getLogger("proxy")
 _proxy_logger.setLevel(logging.INFO)
@@ -256,10 +285,23 @@ async def _forward_stream(
     max_attempts = max(1, config.retry_max_attempts)
     delay = max(0.0, config.retry_delay_seconds)
 
+    model_is_preset = _is_preset_mode(body.get("model", ""))
     for provider_slug, tier in candidates:
-        # Pin this attempt to the authorized provider
+        # Preset mode: swap ONLY the `model` field to the mapped preset slug
+        # (no `provider` pin — the preset fixes the endpoint on OR's side).
+        # Providers mode: pin this attempt to the authorized provider.
         upstream = dict(body)
-        upstream["provider"] = {"only": [provider_slug]}
+        if model_is_preset:
+            preset_slug = _preset_slug_for(body.get("model", ""), provider_slug)
+            if not preset_slug:
+                logger.warning(
+                    f"Preset mode: no presets mapping for {provider_slug}; skipping candidate"
+                )
+                continue
+            upstream["model"] = preset_slug
+            logger.info(f"Attempt via preset {preset_slug} ({provider_slug})")
+        else:
+            upstream["provider"] = {"only": [provider_slug]}
         debug_log.hook_request_out(req_id, upstream, provider_slug, 0)
 
         # Per-provider retry outcome (last failed attempt)
@@ -530,9 +572,23 @@ async def _forward_non_stream(
     max_attempts = max(1, config.retry_max_attempts)
     delay = max(0.0, config.retry_delay_seconds)
 
+    model_is_preset = _is_preset_mode(body.get("model", ""))
     for provider_slug, tier in candidates:
+        # Preset mode: swap ONLY the `model` field to the mapped preset slug
+        # (no `provider` pin — the preset fixes the endpoint on OR's side).
+        # Providers mode: pin this attempt to the authorized provider.
         upstream = dict(body)
-        upstream["provider"] = {"only": [provider_slug]}
+        if model_is_preset:
+            preset_slug = _preset_slug_for(body.get("model", ""), provider_slug)
+            if not preset_slug:
+                logger.warning(
+                    f"Preset mode: no presets mapping for {provider_slug}; skipping candidate"
+                )
+                continue
+            upstream["model"] = preset_slug
+            logger.info(f"Attempt via preset {preset_slug} ({provider_slug})")
+        else:
+            upstream["provider"] = {"only": [provider_slug]}
         debug_log.hook_request_out(req_id, upstream, provider_slug, 0)
 
         provider_status = None
