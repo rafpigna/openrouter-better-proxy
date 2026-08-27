@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
@@ -40,6 +40,52 @@ _proxy_logger.addHandler(_handler)
 # Per (session_id, provider) last cached tokens — to detect silent cache drops
 # (same session+provider going from cached>0 to cached=0 across requests).
 _last_cache: dict[tuple[str, str], int] = {}
+
+# Hop-by-hop headers per RFC 7230 + request-managed headers. These must NOT be
+# forwarded to the upstream: they describe the client<->proxy connection only.
+# `authorization` is replaced with the proxy's own key; host/content-length are
+# recomputed by httpx for the new destination. Everything else the client sent
+# (HTTP-Referer, X-Title / X-OpenRouter-Title app attribution, User-Agent,
+# x-session-id, custom headers...) is forwarded verbatim, same principle as
+# the body passthrough: routing is our job, content transport is not.
+_HOP_BY_HOP_HEADERS = frozenset({
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade",
+    "host", "content-length", "accept-encoding",
+})
+
+
+def _build_upstream_headers(client_headers) -> dict:
+    """Build upstream headers from incoming client headers.
+
+    Forwards everything verbatim except hop-by-hop/managed headers;
+    Authorization is overwritten with the proxy's OPENROUTER_API_KEY.
+    Then the attribution mode (config `attribution.mode`) applies:
+
+    - passthrough (default): client headers win, nothing added
+    - fallback: configured attribution headers are added ONLY if the
+      client did not send that header (per-header basis)
+    - force: configured attribution headers overwrite the client's
+
+    fallback/force exist for clients (OpenWebUI, some SDKs) that attach app
+    attribution only when talking to openrouter.ai directly and therefore
+    show as "App: Unknown" when pointed at a custom base_url.
+    """
+    headers = {
+        k.lower(): v
+        for k, v in client_headers.items()
+        if k.lower() not in _HOP_BY_HOP_HEADERS
+    }
+    headers["content-type"] = "application/json"
+    headers["authorization"] = f"Bearer {config.openrouter_api_key}"
+
+    mode = config.attribution_mode
+    if mode != "passthrough":
+        for key, value in config.attribution_headers.items():
+            lk = key.lower()
+            if mode == "force" or lk not in headers:
+                headers[lk] = value
+    return headers
 
 
 def _is_transient_status(status: int) -> bool:
@@ -143,6 +189,7 @@ async def list_models():
 async def _forward_stream(
     body: dict,
     candidates: list[tuple[str, str]],
+    upstream_headers: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Forward streaming response from OpenRouter as SSE, with in-process
     failover across the AUTHORIZED candidates only.
@@ -160,10 +207,7 @@ async def _forward_stream(
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not configured")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = dict(upstream_headers or _build_upstream_headers({}))
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     last_status = None
@@ -322,20 +366,24 @@ async def _forward_stream(
 
 
 @router.post("/v1/chat/completions")
-async def chat_completions(request: dict):
+async def chat_completions(request: Request):
     """Route chat completion to best provider."""
     if _router is None:
         raise HTTPException(status_code=500, detail="Router not initialized")
 
-    # Extract fields
-    model_id = request.get("model", "")
-    messages = request.get("messages", [])
-    stream = request.get("stream", False)
-    session_id = request.get("session_id")
-    temperature = request.get("temperature")
-    max_tokens = request.get("max_tokens")
-    tools = request.get("tools")
-    extra_body = request.get("extra_body", {})
+    # VERBATIM PASSTHROUGH (headers): keep the caller's app attribution
+    # (HTTP-Referer / X-Title), user agent, x-session-id, custom headers.
+    try:
+        body_dict = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    upstream_headers = _build_upstream_headers(request.headers)
+
+    # Extract fields (routing-only concern; content is forwarded verbatim)
+    model_id = body_dict.get("model", "")
+    messages = body_dict.get("messages", [])
+    tools = body_dict.get("tools")
+    session_id = body_dict.get("session_id")
 
     # Detect tools presence
     has_tools = bool(tools) or any(
@@ -364,33 +412,20 @@ async def chat_completions(request: dict):
     provider_slug, tier = candidates[0]
     logger.info(f"Routing {model_id} → {provider_slug} (tier={tier}) [candidates={len(candidates)}]")
 
-    # Build upstream request (provider pinned per-attempt by the forward loop)
-    upstream_body = {
-        "model": model_id,
-        "messages": messages,
-        "stream": stream,
-    }
-
-    # Forward compatible fields
-    if temperature is not None:
-        upstream_body["temperature"] = temperature
-    if max_tokens is not None:
-        upstream_body["max_tokens"] = max_tokens
-    if tools:
-        upstream_body["tools"] = tools
-
-    # Forward session_id if present
-    if session_id:
-        upstream_body["session_id"] = session_id
-
-    # Add any extra fields from extra_body
-    upstream_body.update(extra_body)
+    # VERBATIM PASSTHROUGH: the proxy must never alter the request CONTENT.
+    # Routing is the proxy's ONLY concern (provider pin is injected per-attempt
+    # in the forward loops). Everything the client sent — model, messages,
+    # temperature, top_p, stop, seed, response_format, reasoning, tools,
+    # session_id, any future/unknown field — goes to OpenRouter exactly as it
+    # arrived. We only shallow-copy so the forward loop can attach `provider`
+    # without mutating the incoming request object.
+    upstream_body = dict(body_dict)
 
     # Return streaming or non-streaming response. Both run the in-process
     # failover loop over the authorized `candidates` only.
-    if stream:
+    if body_dict.get("stream", False):
         return StreamingResponse(
-            _forward_stream(upstream_body, candidates),
+            _forward_stream(upstream_body, candidates, upstream_headers),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -399,12 +434,13 @@ async def chat_completions(request: dict):
             },
         )
     else:
-        return await _forward_non_stream(upstream_body, candidates)
+        return await _forward_non_stream(upstream_body, candidates, upstream_headers)
 
 
 async def _forward_non_stream(
     body: dict,
     candidates: list[tuple[str, str]],
+    upstream_headers: dict | None = None,
 ) -> dict:
     """Forward non-streaming request to OpenRouter, with in-process failover
     across the AUTHORIZED candidates only. Returns the first successful
@@ -417,10 +453,7 @@ async def _forward_non_stream(
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not configured")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = dict(upstream_headers or _build_upstream_headers({}))
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     last_status = None
