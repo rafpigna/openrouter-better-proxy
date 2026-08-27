@@ -67,6 +67,33 @@ class Config:
             return False
         return bool(enabled)
 
+    @property
+    def debug_log_enabled(self) -> bool:
+        """Debug request log (logs/requests.jsonl): SOLO se esplicitamente abilitato.
+
+        Lettura DINAMICA a ogni chiamata (nessun caching): il toggle dalla
+        dashboard è effettivo subito dopo config.load(), senza restart del servizio.
+        Env override DEBUG_REQUEST_LOG=1|0 (stessa semantica di SSE_LOG_ENABLED).
+        Default OFF.
+        """
+        enabled = self.raw.get("server", {}).get("debug_log", False)
+        env_val = os.environ.get("DEBUG_REQUEST_LOG", "")
+        if env_val in ("1", "true", "True", "on", "ON"):
+            return True
+        if env_val in ("0", "false", "False", "off", "OFF"):
+            return False
+        return bool(enabled)
+
+    @property
+    def debug_max_body_chars(self) -> int:
+        """Char cap applied to stored raw bodies in logs/requests.jsonl
+        (hashes are always computed over the FULL content). 0 = unlimited."""
+        try:
+            v = int(self.raw.get("server", {}).get("debug_max_body_chars", 200000))
+        except (TypeError, ValueError):
+            v = 200000
+        return max(0, v)
+
     # --- Models ---
     @property
     def models(self) -> dict[str, Any]:

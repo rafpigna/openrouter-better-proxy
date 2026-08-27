@@ -9,12 +9,14 @@ from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, HTTPException, Request
+import uuid
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 from router import Router
 from cache import EndpointCache
 from config import config
+import debug_log
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +192,7 @@ async def _forward_stream(
     body: dict,
     candidates: list[tuple[str, str]],
     upstream_headers: dict | None = None,
+    req_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Forward streaming response from OpenRouter as SSE, with in-process
     failover across the AUTHORIZED candidates only.
@@ -220,6 +223,7 @@ async def _forward_stream(
         # Pin this attempt to the authorized provider
         upstream = dict(body)
         upstream["provider"] = {"only": [provider_slug]}
+        debug_log.hook_request_out(req_id, upstream, provider_slug, 0)
 
         # Per-provider retry outcome (last failed attempt)
         provider_status = None
@@ -281,6 +285,12 @@ async def _forward_stream(
                             # as an error and cut the stream.
                             _router.record_error(provider_slug)
                             ERROR_COUNT += 1
+                            debug_log.hook_response(
+                                req_id, provider_slug, 502, None,
+                                provider_response, model_response,
+                                int((time.monotonic() - start) * 1000),
+                                f"mid-stream: {e}",
+                            )
                             _write_proxy_log(
                                 model_id, provider_slug, tier, session_id, True,
                                 502, None, int((time.monotonic() - start) * 1000),
@@ -298,6 +308,11 @@ async def _forward_stream(
                         except asyncio.CancelledError:
                             # Client disconnected / aborted the stream. The upstream
                             # request DID happen (and may be billed), so log it.
+                            debug_log.hook_response(
+                                req_id, provider_slug, 200, usage,
+                                provider_response, model_response,
+                                int((time.monotonic() - start) * 1000),
+                            )
                             _write_proxy_log(
                                 model_id, provider_slug, tier, session_id, True,
                                 200, usage, int((time.monotonic() - start) * 1000),
@@ -306,6 +321,11 @@ async def _forward_stream(
                             raise
 
                         # End of stream — write proxy log
+                        debug_log.hook_response(
+                            req_id, provider_slug, 200, usage,
+                            provider_response, model_response,
+                            int((time.monotonic() - start) * 1000),
+                        )
                         _write_proxy_log(
                             model_id, provider_slug, tier, session_id, True,
                             200, usage, int((time.monotonic() - start) * 1000),
@@ -338,6 +358,11 @@ async def _forward_stream(
         # fail over to the next authorized candidate.
         _router.record_error(provider_slug)
         ERROR_COUNT += 1
+        debug_log.hook_response(
+            req_id, provider_slug, provider_status or 503, None,
+            None, None, int((time.monotonic() - start) * 1000),
+            provider_text or "no response",
+        )
         _write_proxy_log(
             model_id, provider_slug, tier, session_id, True,
             provider_status or 503, None, int((time.monotonic() - start) * 1000),
@@ -378,6 +403,11 @@ async def chat_completions(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     upstream_headers = _build_upstream_headers(request.headers)
+
+    # Debug capture (F2): full raw in/out/res correlated by req_id. All hooks
+    # are no-ops when server.debug_log is off (dynamic read, hot toggle).
+    req_id = f"{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
+    debug_log.hook_request_in(req_id, body_dict, request.headers)
 
     # Extract fields (routing-only concern; content is forwarded verbatim)
     model_id = body_dict.get("model", "")
@@ -425,7 +455,7 @@ async def chat_completions(request: Request):
     # failover loop over the authorized `candidates` only.
     if body_dict.get("stream", False):
         return StreamingResponse(
-            _forward_stream(upstream_body, candidates, upstream_headers),
+            _forward_stream(upstream_body, candidates, upstream_headers, req_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -434,13 +464,14 @@ async def chat_completions(request: Request):
             },
         )
     else:
-        return await _forward_non_stream(upstream_body, candidates, upstream_headers)
+        return await _forward_non_stream(upstream_body, candidates, upstream_headers, req_id)
 
 
 async def _forward_non_stream(
     body: dict,
     candidates: list[tuple[str, str]],
     upstream_headers: dict | None = None,
+    req_id: str | None = None,
 ) -> dict:
     """Forward non-streaming request to OpenRouter, with in-process failover
     across the AUTHORIZED candidates only. Returns the first successful
@@ -465,6 +496,7 @@ async def _forward_non_stream(
     for provider_slug, tier in candidates:
         upstream = dict(body)
         upstream["provider"] = {"only": [provider_slug]}
+        debug_log.hook_request_out(req_id, upstream, provider_slug, 0)
 
         provider_status = None
         provider_text = None
@@ -499,6 +531,10 @@ async def _forward_non_stream(
                 provider_response = response_data.get("provider")
                 model_response = response_data.get("model")
                 latency_ms = int((time.monotonic() - start) * 1000)
+                debug_log.hook_response(
+                    req_id, provider_slug, 200, usage,
+                    provider_response, model_response, latency_ms,
+                )
                 _write_proxy_log(
                     model_id, provider_slug, tier, session_id, False,
                     200, usage, latency_ms, None, provider_response, model_response,
@@ -526,6 +562,11 @@ async def _forward_non_stream(
         # Out of the per-provider attempt loop: this provider failed.
         _router.record_error(provider_slug)
         ERROR_COUNT += 1
+        debug_log.hook_response(
+            req_id, provider_slug, provider_status or 503, None,
+            None, None, int((time.monotonic() - start) * 1000),
+            provider_text or "no response",
+        )
         _write_proxy_log(
             model_id, provider_slug, tier, session_id, False,
             provider_status or 503, None, int((time.monotonic() - start) * 1000),
