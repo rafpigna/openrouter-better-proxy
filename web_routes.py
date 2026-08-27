@@ -23,7 +23,7 @@ import yaml
 from config import config
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # ---------------------------------------------------------------------------
 # Logger
@@ -198,6 +198,21 @@ class RetryConfig(BaseModel):
     delay_seconds: float = Field(0.0, ge=0.0)
 
 
+class AttributionConfig(BaseModel):
+    mode: str = Field("passthrough")
+    headers: dict[str, str] = Field(default_factory=dict)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_valid(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in ("passthrough", "fallback", "force"):
+            raise ValueError("attribution.mode must be passthrough|fallback|force")
+        return v
+
+
 class ConfigSchema(BaseModel):
     server: ServerConfig = ServerConfig()
     models: dict[str, ModelConfig] = Field(..., min_length=0)
@@ -205,6 +220,7 @@ class ConfigSchema(BaseModel):
     refresh: RefreshConfig = RefreshConfig()
     health: HealthConfig = HealthConfig()
     retry: RetryConfig = RetryConfig()
+    attribution: AttributionConfig = AttributionConfig()
 
 
 async def _read_config_yaml() -> str:
