@@ -157,6 +157,7 @@ class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8787
     dashboard: bool = True
+    debug_log: bool = False
 
 
 class MaxPriceModel(BaseModel):
@@ -359,7 +360,85 @@ async def api_status():
             "running": getattr(scheduler, "_running", False),
             "next_refresh": scheduler.next_run.replace(tzinfo=timezone.utc).isoformat() if scheduler is not None and getattr(scheduler, "next_run", None) else None,
         } if scheduler is not None else {"running": False, "next_refresh": None},
+        "debug_log": _debug_log_status(),
     }
+
+
+def _debug_log_status() -> dict:
+    """Debug-log state for the UI banner (import-guarded for tests)."""
+    try:
+        import debug_log
+        return debug_log.status()
+    except Exception:
+        return {"enabled": bool(config.debug_log_enabled), "file": None,
+                "size_bytes": 0, "last_write": None}
+
+
+# ---------------------------------------------------------------------------
+# Debug log toggle — surgical YAML edit (preserves comments/formatting)
+# ---------------------------------------------------------------------------
+
+@router.post("/api/debug/toggle")
+async def api_debug_toggle(request: Request):
+    """Enable/disable `server.debug_log` in routing_config.yaml.
+
+    The flag is edited SURGICALLY in the raw YAML text (never yaml.dump —
+    it would destroy comments and formatting), then config.load() makes the
+    change effective immediately (dynamic read, no restart).
+    Body: {"enabled": true|false}
+    """
+    data = await request.json()
+    enabled = bool(data.get("enabled"))
+
+    async with _config_lock:
+        await _backup_config()
+
+        def _apply():
+            text = CONFIG_YAML_PATH.read_text(encoding="utf-8")
+            lines_cfg = text.splitlines(keepends=True)
+            value = "true" if enabled else "false"
+            target = "debug_log: " + value
+            in_server = False
+            found = False
+            out = []
+            for line in lines_cfg:
+                stripped = line.rstrip("\r\n")
+                if stripped and not stripped[0].isspace() and not stripped.startswith("#"):
+                    in_server = (stripped == "server:")
+                if in_server and stripped.split("#", 1)[0].strip().startswith("debug_log:"):
+                    indent = line[: len(line) - len(line.lstrip())]
+                    eol = line[len(stripped):] or "\n"
+                    comment = ("  #" + stripped.split("#", 1)[1]) if "#" in stripped else ""
+                    out.append(indent + target + comment + eol)
+                    found = True
+                else:
+                    out.append(line)
+            if not found:
+                # Insert right after the `server:` key with matching indentation
+                new_lines = []
+                inserted = False
+                for line in lines_cfg:
+                    new_lines.append(line)
+                    if not inserted and line.rstrip("\r\n").rstrip() == "server:":
+                        eol = "\r\n" if line.endswith("\r\n") else "\n"
+                        new_lines.append("    debug_log: " + value + eol)
+                        inserted = True
+                if not inserted:
+                    raise HTTPException(status_code=400, detail="server: section not found in config")
+                text = "".join(new_lines)
+            else:
+                text = "".join(out)
+            CONFIG_YAML_PATH.write_text(text, encoding="utf-8")
+            return text, True
+
+        await asyncio.to_thread(_apply)
+
+    from config import config as live_cfg
+    live_cfg.load()
+
+    import debug_log
+    return {"status": "ok", "enabled": debug_log.is_enabled(),
+            "message": f"Debug request log {'ENABLED' if debug_log.is_enabled() else 'disabled'}"}
 
 
 # ---------------------------------------------------------------------------
@@ -786,9 +865,10 @@ async def api_config_export():
 async def api_logs_delete_all():
     """Delete all log files, including rotated/compressed versions (GDPR).
 
-    Active log files (app.log, proxy.jsonl) are TRUNCATED (kept inode) so the
-    FileHandler keeps writing to the same file; rotated/compressed versions
-    (*.log-*, *.jsonl-*, *.gz) are physically removed.
+    Active log files (app.log, proxy.jsonl, requests.jsonl) are TRUNCATED
+    (kept inode) so the FileHandler keeps writing to the same file;
+    rotated/compressed versions (*.log-*, *.jsonl-*, *.gz) are physically
+    removed.
     """
     import glob
     import os
@@ -796,7 +876,7 @@ async def api_logs_delete_all():
     truncated = []
     removed = []
     # Active files held open by FileHandler: truncate to 0 (keep inode)
-    for name in ("app.log", "proxy.jsonl"):
+    for name in ("app.log", "proxy.jsonl", "requests.jsonl"):
         p = logs_dir / name
         if p.exists():
             try:
@@ -806,7 +886,8 @@ async def api_logs_delete_all():
             except OSError as e:
                 logger.error(f"Log truncate failed {name}: {e}")
     # Rotated/compressed versions: remove physically
-    for pat in ("app.log-*", "app.log.*", "proxy.jsonl-*", "proxy.jsonl.*", "*.gz"):
+    for pat in ("app.log-*", "app.log.*", "proxy.jsonl-*", "proxy.jsonl.*",
+                "requests.jsonl-*", "requests.jsonl.*", "*.gz"):
         for f in glob.glob(str(logs_dir / pat)):
             try:
                 os.remove(f)
