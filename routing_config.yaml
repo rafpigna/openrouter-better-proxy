@@ -58,10 +58,10 @@ migration:
 refresh:
     interval_minutes: 30
     price_change_threshold: 10.0      # percent points (10 = 10%)
-    # Timezone for times WITHOUT suffix: "local" = OS timezone of the machine
-    # running the proxy (default) | "UTC" | an IANA name (e.g. Europe/Rome).
-    # A time ending in "UTC" always runs on the UTC clock (e.g. "12:01UTC").
-    # Other timezones: convert to UTC (or local) yourself.
+    # Timezone for times WITHOUT suffix — only two clocks exist:
+    # "local" = OS timezone of the machine running the proxy (default),
+    # "UTC". Nothing else. A time ending in "UTC" always runs on the UTC
+    # clock (e.g. "12:01UTC"). Other timezones: convert to UTC yourself.
     default_timezone: local
     times:                            # 24h; e.g. ['03:01', '12:01UTC']
       - '03:01'

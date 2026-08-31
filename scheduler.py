@@ -14,10 +14,6 @@ from router import Router
 from migration import PriceMigration
 
 from datetime import datetime, timedelta, timezone, tzinfo
-try:
-    from zoneinfo import ZoneInfo  # py3.9+; on Windows requires the tzdata package
-except ImportError:  # pragma: no cover
-    ZoneInfo = None
 import re as _re
 
 logger = logging.getLogger(__name__)
@@ -27,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Timezone-aware refresh time specs
 # ---------------------------------------------------------------------------
 # Entry formats (refresh.times):
-#   "HH:MM"        -> default timezone (refresh.default_timezone: local|UTC|IANA)
+#   "HH:MM"        -> default timezone (refresh.default_timezone: local|UTC)
 #   "HH:MMUTC"     -> UTC (canonical explicit suffix, also accepted: "HH:MMZ")
 #   "HH:MM+02:00"  -> explicit fixed offset (also +0200 / -HH:MM forms)
 #   {from, to, step} window dicts: from/to accept the same suffixes.
@@ -36,10 +32,13 @@ _TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>Z|z|UTC|utc|[+-]\d
 
 
 def resolve_tz(spec: str | None, default: str) -> tzinfo:
-    """Resolve a timezone spec ("local" | "UTC" | IANA | +HH:MM) to tzinfo.
+    """Resolve a timezone spec to tzinfo.
 
-    "local" = OS timezone of the machine running the proxy.
-    Raises ValueError on unknown IANA names or malformed offsets.
+    Contract (2026-08-31): exactly TWO clocks — the machine's OS timezone
+    ("local") and UTC. IANA names are intentionally NOT accepted: a typo
+    (e.g. "Rome") would silently degrade all bare entries to warnings, with
+    no UI surface to catch it. Fixed numeric offsets (e.g. "+02:00") stay
+    accepted for hand-written per-entry suffixes.
     """
     s = (spec if spec is not None else default or "local").strip()
     if s.lower() in ("local", ""):
@@ -50,12 +49,7 @@ def resolve_tz(spec: str | None, default: str) -> tzinfo:
     if m:
         sign = 1 if m.group(1) == "+" else -1
         return timezone(sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3))))
-    if ZoneInfo is not None:
-        try:
-            return ZoneInfo(s)
-        except Exception as e:
-            raise ValueError(f"Unknown timezone {s!r}: {e}") from e
-    raise ValueError(f"Unknown timezone {s!r} (IANA names need Python zoneinfo/tzdata)")
+    raise ValueError(f"Unknown timezone {s!r} (accepted: local | UTC | +HH:MM offset)")
 
 
 def parse_refresh_time(spec: str, default_tz: str) -> tuple[int, int, tzinfo]:

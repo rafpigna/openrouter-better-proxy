@@ -230,20 +230,22 @@ class RefreshConfig(BaseModel):
     # In PERCENT POINTS (10 = 10%, default 1 = 1%).
     price_change_threshold: float = Field(1.0, ge=0.0)
     times: list[Any] = []
-    # Timezone for entries WITHOUT suffix: "local" (OS tz of the machine),
-    # "UTC", an IANA name ("Europe/Rome") or a fixed offset ("+02:00").
+    # Timezone for entries WITHOUT suffix — only two clocks exist:
+    # "local" (OS timezone of the machine) or "UTC". Nothing else.
     default_timezone: str = Field("local")
 
     @field_validator("default_timezone")
     @classmethod
-    def _tz_resolvable(cls, v: str) -> str:
-        s = (v or "local").strip() or "local"
-        from scheduler import resolve_tz
-        try:
-            resolve_tz(s, "local")
-        except ValueError as e:
-            raise ValueError(f"refresh.default_timezone: {e}")
-        return s
+    def _tz_two_clocks(cls, v: str) -> str:
+        s = (v or "local").strip()
+        if s.lower() == "local":
+            return "local"
+        if s.lower() == "utc":
+            return "UTC"
+        raise ValueError(
+            "refresh.default_timezone must be 'local' or 'UTC' "
+            "(any other timezone: convert the times to UTC yourself)"
+        )
 
 
 class HealthConfig(BaseModel):
