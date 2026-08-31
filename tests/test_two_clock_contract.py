@@ -45,11 +45,12 @@ def test_iana_and_other_defaults_rejected(bad):
     assert "'local' or 'UTC'" in msg, msg
 
 
-def test_resolve_tz_still_accepts_offsets():
-    """Per-entry fixed offsets (hand-written YAML) stay supported."""
+def test_resolve_tz_rejects_offsets_and_z():
+    """Two-clock contract: offsets and legacy 'Z' are gone everywhere."""
     from datetime import timedelta
-    assert resolve_tz("+02:00", "local").utcoffset(None) == timedelta(hours=2)
-    assert resolve_tz("-05:30", "local").utcoffset(None) == timedelta(hours=-5, minutes=-30)
+    for bad in ("+02:00", "-05:30", "+0200", "Z"):
+        with pytest.raises(ValueError):
+            resolve_tz(bad, "local")
 
 
 def test_resolve_tz_rejects_iana():

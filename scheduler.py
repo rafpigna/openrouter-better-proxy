@@ -22,59 +22,51 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Timezone-aware refresh time specs
 # ---------------------------------------------------------------------------
-# Entry formats (refresh.times):
-#   "HH:MM"        -> default timezone (refresh.default_timezone: local|UTC)
-#   "HH:MMUTC"     -> UTC (canonical explicit suffix, also accepted: "HH:MMZ")
-#   "HH:MM+02:00"  -> explicit fixed offset (also +0200 / -HH:MM forms)
-#   {from, to, step} window dicts: from/to accept the same suffixes.
+# Entry formats (refresh.times) — the FULL grammar, nothing else:
+#   "HH:MM"     -> default timezone (refresh.default_timezone: local|UTC)
+#   "HH:MMUTC"  -> UTC regardless of the default
+#   {from, to, step} window dicts: from/to accept the same two forms.
+# Offsets and other suffixes are intentionally NOT accepted (2026-08-31):
+# an invalid entry is skipped with a warning, never fatal.
 
-_TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>Z|z|UTC|utc|[+-]\d{2}:?\d{2})?$")
+_TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>UTC|utc)?$")
 
 
 def resolve_tz(spec: str | None, default: str) -> tzinfo:
     """Resolve a timezone spec to tzinfo.
 
     Contract (2026-08-31): exactly TWO clocks — the machine's OS timezone
-    ("local") and UTC. IANA names are intentionally NOT accepted: a typo
-    (e.g. "Rome") would silently degrade all bare entries to warnings, with
-    no UI surface to catch it. Fixed numeric offsets (e.g. "+02:00") stay
-    accepted for hand-written per-entry suffixes.
+    ("local") and UTC. IANA names and numeric offsets are intentionally
+    NOT accepted anywhere (default or per-entry): a typo or a stray
+    suffix would silently degrade entries to warnings with no UI surface
+    to catch it. If the machine clock looks wrong, fix the machine; for
+    any other timezone, convert the times to UTC yourself.
     """
     s = (spec if spec is not None else default or "local").strip()
     if s.lower() in ("local", ""):
         return datetime.now().astimezone().tzinfo
-    if s.upper() in ("UTC", "Z"):
+    if s.lower() == "utc":
         return timezone.utc
-    m = _re.match(r"^([+-])(\d{2}):?(\d{2})$", s)
-    if m:
-        sign = 1 if m.group(1) == "+" else -1
-        return timezone(sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3))))
-    raise ValueError(f"Unknown timezone {s!r} (accepted: local | UTC | +HH:MM offset)")
+    raise ValueError(f"Unknown timezone {s!r} (accepted: local | UTC)")
 
 
 def parse_refresh_time(spec: str, default_tz: str) -> tuple[int, int, tzinfo]:
-    """Parse a "HH:MM[<tz>]" entry -> (hour, minute, tzinfo). Raises ValueError."""
+    """Parse a "HH:MM[UTC]" entry -> (hour, minute, tzinfo). Raises ValueError."""
     m = _TZ_SUFFIX_RE.match(str(spec).strip())
     if not m:
-        raise ValueError(f"Invalid refresh time {spec!r} (expected HH:MM, HH:MMZ or HH:MM+02:00)")
+        raise ValueError(f"Invalid refresh time {spec!r} (expected HH:MM or HH:MMUTC)")
     h, mn = map(int, m.group("hm").split(":"))
     if not (0 <= h <= 23 and 0 <= mn <= 59):
         raise ValueError(f"Invalid refresh time {spec!r}: hour/minute out of range")
-    tz_raw = m.group("tz")
-    if tz_raw and tz_raw.upper() in ("Z", "UTC"):
-        tz = timezone.utc
-    elif tz_raw:
-        tz = resolve_tz(tz_raw, default_tz)
-    else:
-        tz = resolve_tz(None, default_tz)
+    tz = timezone.utc if m.group("tz") else resolve_tz(None, default_tz)
     return h, mn, tz
 
 
 def next_trigger_for(spec: str, now_utc: datetime, default_tz: str) -> datetime:
-    """Next aware datetime matching a "HH:MM[<tz>]" entry, after now_utc.
+    """Next aware datetime matching a "HH:MM[UTC]" entry, after now_utc.
 
     Wall-clock semantics: the trigger is built in the entry's OWN timezone
-    (so "12:01Z" is always 12:01 UTC and "12:01" is 12:01 machine-time),
+    (so "12:01UTC" is always 12:01 UTC and "12:01" is 12:01 machine-time),
     then compared against now_utc as absolute instants.
     """
     h, mn, tz = parse_refresh_time(spec, default_tz)

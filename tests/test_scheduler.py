@@ -307,14 +307,8 @@ class TestTimezoneAwareTimes:
     @pytest.mark.parametrize("tz,entry,expected_utc", [
         # "12:01" with default UTC == old behaviour
         ("UTC", "12:01", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
-        # "12:01Z" legacy alias accepted
-        ("local", "12:01Z", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
-        # "19:05UTC" canonical explicit suffix
+        # "19:05UTC" explicit UTC regardless of default
         ("local", "19:05UTC", datetime(2026, 8, 31, 19, 5, tzinfo=timezone.utc)),
-        # "12:01+02:00" explicit offset == 10:01 UTC
-        ("local", "12:01+02:00", datetime(2026, 8, 31, 10, 1, tzinfo=timezone.utc)),
-        # "12:01-05:30" negative offset == 17:31 UTC
-        ("UTC", "12:01-05:30", datetime(2026, 8, 31, 17, 31, tzinfo=timezone.utc)),
     ])
     async def test_entry_timezones(self, monkeypatch, tz, entry, expected_utc):
         s = self._scheduler()
@@ -326,10 +320,12 @@ class TestTimezoneAwareTimes:
     @pytest.mark.asyncio
     async def test_invalid_entries_skipped_not_fatal(self, monkeypatch):
         s = self._scheduler()
-        self._with_times(monkeypatch, ["25:00", "abc", 12, "09:00"], tz="UTC")
+        # legacy "Z" and numeric offsets are REJECTED by the two-clock
+        # contract (2026-08-31) — skipped with a warning, never fatal
+        self._with_times(monkeypatch, ["25:00", "abc", 12, "12:01Z", "12:01+02:00", "09:00"], tz="UTC")
         self._freeze(monkeypatch, datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc))
         trig = await s._wait_for_next_trigger()
-        # only the valid "09:00" survives (note: bare int 12 is skipped as neither str nor dict)
+        # only the valid "09:00" survives (bare int 12 skipped: neither str nor dict)
         assert (trig.hour, trig.minute) == (9, 0), trig
 
     @pytest.mark.asyncio
