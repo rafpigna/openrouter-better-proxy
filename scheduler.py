@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 
 from config import config
@@ -110,7 +110,8 @@ class RefreshScheduler:
                 h, m = map(int, time_spec.split(":"))
                 trigger = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if trigger <= now:
-                    trigger = trigger.replace(day=trigger.day + 1)
+                    # timedelta handles month/year rollover (e.g. Jan 31 -> Feb 1)
+                    trigger = trigger + timedelta(days=1)
                 next_times.append(trigger)
             elif isinstance(time_spec, dict):
                 # Window like {from: "18:00", to: "22:00", step: "05m"}
@@ -130,18 +131,19 @@ class RefreshScheduler:
                 # Calculate next trigger in window
                 trigger = now.replace(hour=from_h, minute=from_m, second=0, microsecond=0)
                 if trigger <= now:
-                    # Add one day
-                    from datetime import timedelta
+                    # Add one day (timedelta handles month/year rollover)
                     trigger = trigger + timedelta(days=1)
 
                 # Check if we're in a dense window (every 5 min)
                 if step_str == "05m":
-                    # Round up to next 5-minute mark
+                    # Round up to next 5-minute mark (timedelta handles the
+                    # minute>=56 -> next-hour and day rollover correctly)
                     minutes = trigger.minute
                     remaining = (5 - (minutes % 5)) % 5
-                    trigger = trigger.replace(minute=minutes + remaining)
+                    if remaining:
+                        trigger = trigger + timedelta(minutes=remaining)
                     if trigger <= now:
-                        trigger = trigger.replace(day=trigger.day + 1)
+                        trigger = trigger + timedelta(days=1)
 
                 next_times.append(trigger)
 
@@ -237,7 +239,7 @@ class RefreshScheduler:
 
                 if should_migrate:
                     logger.info(
-                        f"Migrating session {session_id}: {changed_provider} → {best_alternative.get('tag')} "
+                        f"Migrating session {session_id}: {changed_provider} -> {best_alternative.get('tag')} "
                         f"(N*={n_star:.2f})"
                     )
                     self.sessions.set_provider(session_id, best_alternative.get("tag"))

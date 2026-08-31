@@ -3,7 +3,7 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from scheduler import RefreshScheduler
 from migration import PriceMigration
@@ -196,6 +196,77 @@ class TestScheduler:
 
         await scheduler.stop()
         assert scheduler._running is False
+
+
+class TestNextTriggerCalendarRollover:
+    """Regression (2026-08-31): explicit-time triggers used
+    `replace(day=day+1)` / `replace(minute=...)`, which crash with
+    'day is out of range for month' on the 31st (and minute>=56 in dense
+    windows). All rollovers must go through timedelta."""
+
+    def _scheduler(self):
+        backoff = BackoffManager()
+        sessions = SessionManager()
+        cache = EndpointCache(data_dir="data/test-cache-sched-cal")
+        router = Router(backoff, sessions, cache)
+        fetcher = EndpointFetcher(api_key="test-key", cache=cache)
+        diff_detector = PriceDiffDetector(snapshot_dir="data/test-snapshots-cal")
+        return RefreshScheduler(fetcher, cache, diff_detector, router, sessions, PriceMigration())
+
+    def _with_times(self, monkeypatch, times):
+        from config import config
+        monkeypatch.setitem(config.raw, "refresh",
+                            {"interval_minutes": 30, "price_change_threshold": 10.0,
+                             "times": times})
+
+    @pytest.mark.asyncio
+    async def test_explicit_time_rolls_over_month(self, monkeypatch):
+        s = self._scheduler()
+        self._with_times(monkeypatch, ["09:00"])
+        # Aug 31 10:00 UTC -> next trigger must be Sep 1 09:00 (not day=32!)
+        now = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+        real_now = datetime.now(timezone.utc)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now if tz else now.replace(tzinfo=None)
+        import scheduler as sched_mod
+        monkeypatch.setattr(sched_mod, "datetime", _Frozen)
+        trig = await s._wait_for_next_trigger()
+        assert (trig.year, trig.month, trig.day, trig.hour) == (2026, 9, 1, 9), trig
+        del real_now
+
+    @pytest.mark.asyncio
+    async def test_dense_window_minute_rollover(self, monkeypatch):
+        s = self._scheduler()
+        self._with_times(monkeypatch, [{"from": "00:00", "to": "23:59", "step": "05m"}])
+        # 23:57 -> rounding up must land 00:00 of the NEXT day, not minute=60
+        now = datetime(2026, 8, 31, 23, 57, tzinfo=timezone.utc)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now if tz else now.replace(tzinfo=None)
+        import scheduler as sched_mod
+        monkeypatch.setattr(sched_mod, "datetime", _Frozen)
+        trig = await s._wait_for_next_trigger()
+        assert (trig.month, trig.day, trig.hour, trig.minute) == (9, 1, 0, 0), trig
+
+    @pytest.mark.asyncio
+    async def test_explicit_time_future_today(self, monkeypatch):
+        s = self._scheduler()
+        self._with_times(monkeypatch, ["09:00"])
+        now = datetime(2026, 8, 31, 7, 0, tzinfo=timezone.utc)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now if tz else now.replace(tzinfo=None)
+        import scheduler as sched_mod
+        monkeypatch.setattr(sched_mod, "datetime", _Frozen)
+        trig = await s._wait_for_next_trigger()
+        assert (trig.month, trig.day, trig.hour) == (8, 31, 9), trig
 
 
 if __name__ == "__main__":
