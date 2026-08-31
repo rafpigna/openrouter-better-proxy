@@ -37,13 +37,15 @@ models:
         #     deepinfra: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-deepinfra
         #     streamlake: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-streamlake
 
-    z-ai/glm-5.3:
+    z-ai/glm-5.3-flash:
         providers:
           - z-ai/fp8
+          - novita/fp8
+          - gmicloud/fp8
         max_price:
-            input: 1.4
-            completion: 4.4
-            cache: 0.26
+            input: 0.076
+            completion: 0.26
+            cache: 0.016
 
 # Global sections (apply to all models).
 migration:
@@ -56,7 +58,12 @@ migration:
 refresh:
     interval_minutes: 30
     price_change_threshold: 10.0      # percent points (10 = 10%)
-    times: []                         # optional fixed times, e.g. ['03:01', '08:01']
+    times:                            # optional fixed times, e.g. ['03:01', '08:01']
+      - '03:01'
+      - '06:01'
+      - '08:01'
+      - '12:01'
+      - '18:01'                         
 
 health:
     initial_cooldown_seconds: 300
