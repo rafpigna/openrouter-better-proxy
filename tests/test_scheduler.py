@@ -307,8 +307,10 @@ class TestTimezoneAwareTimes:
     @pytest.mark.parametrize("tz,entry,expected_utc", [
         # "12:01" with default UTC == old behaviour
         ("UTC", "12:01", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
-        # "12:01Z" explicit UTC regardless of default
+        # "12:01Z" legacy alias accepted
         ("local", "12:01Z", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
+        # "19:05UTC" canonical explicit suffix
+        ("local", "19:05UTC", datetime(2026, 8, 31, 19, 5, tzinfo=timezone.utc)),
         # "12:01+02:00" explicit offset == 10:01 UTC
         ("local", "12:01+02:00", datetime(2026, 8, 31, 10, 1, tzinfo=timezone.utc)),
         # "12:01-05:30" negative offset == 17:31 UTC

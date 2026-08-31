@@ -60,9 +60,10 @@ refresh:
     price_change_threshold: 10.0      # percent points (10 = 10%)
     # Timezone for times WITHOUT suffix: "local" = OS timezone of the machine
     # running the proxy (default) | "UTC" | an IANA name (e.g. Europe/Rome).
-    # Per-entry suffixes ALWAYS win: "12:01Z" = UTC, "12:01+02:00" = explicit offset.
+    # A time ending in "UTC" always runs on the UTC clock (e.g. "12:01UTC").
+    # Other timezones: convert to UTC (or local) yourself.
     default_timezone: local
-    times:                            # e.g. ['03:01', '12:01Z', '16:00+02:00']
+    times:                            # 24h; e.g. ['03:01', '12:01UTC']
       - '03:01'
       - '06:01'
       - '08:01'

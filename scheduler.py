@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Entry formats (refresh.times):
 #   "HH:MM"        -> default timezone (refresh.default_timezone: local|UTC|IANA)
-#   "HH:MMZ"       -> UTC
+#   "HH:MMUTC"     -> UTC (canonical explicit suffix, also accepted: "HH:MMZ")
 #   "HH:MM+02:00"  -> explicit fixed offset (also +0200 / -HH:MM forms)
 #   {from, to, step} window dicts: from/to accept the same suffixes.
 
-_TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>Z|z|[+-]\d{2}:?\d{2})?$")
+_TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>Z|z|UTC|utc|[+-]\d{2}:?\d{2})?$")
 
 
 def resolve_tz(spec: str | None, default: str) -> tzinfo:
@@ -67,7 +67,7 @@ def parse_refresh_time(spec: str, default_tz: str) -> tuple[int, int, tzinfo]:
     if not (0 <= h <= 23 and 0 <= mn <= 59):
         raise ValueError(f"Invalid refresh time {spec!r}: hour/minute out of range")
     tz_raw = m.group("tz")
-    if tz_raw in ("Z", "z"):
+    if tz_raw and tz_raw.upper() in ("Z", "UTC"):
         tz = timezone.utc
     elif tz_raw:
         tz = resolve_tz(tz_raw, default_tz)
