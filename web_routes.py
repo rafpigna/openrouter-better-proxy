@@ -230,6 +230,20 @@ class RefreshConfig(BaseModel):
     # In PERCENT POINTS (10 = 10%, default 1 = 1%).
     price_change_threshold: float = Field(1.0, ge=0.0)
     times: list[Any] = []
+    # Timezone for entries WITHOUT suffix: "local" (OS tz of the machine),
+    # "UTC", an IANA name ("Europe/Rome") or a fixed offset ("+02:00").
+    default_timezone: str = Field("local")
+
+    @field_validator("default_timezone")
+    @classmethod
+    def _tz_resolvable(cls, v: str) -> str:
+        s = (v or "local").strip() or "local"
+        from scheduler import resolve_tz
+        try:
+            resolve_tz(s, "local")
+        except ValueError as e:
+            raise ValueError(f"refresh.default_timezone: {e}")
+        return s
 
 
 class HealthConfig(BaseModel):
@@ -401,9 +415,13 @@ async def api_status():
             "version": "0.1.0",
         },
         "migration": migration_info,
+        "server_time": {
+            "local": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
         "scheduler": {
             "running": getattr(scheduler, "_running", False),
-            "next_refresh": scheduler.next_run.replace(tzinfo=timezone.utc).isoformat() if scheduler is not None and getattr(scheduler, "next_run", None) else None,
+            "next_refresh": scheduler.next_run.astimezone(timezone.utc).isoformat() if scheduler is not None and getattr(scheduler, "next_run", None) else None,
         } if scheduler is not None else {"running": False, "next_refresh": None},
         "debug_log": _debug_log_status(),
     }

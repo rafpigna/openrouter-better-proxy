@@ -138,6 +138,17 @@ class Config:
     def refresh_times(self) -> list[Any]:
         return self.raw.get("refresh", {}).get("times", [])
 
+    @property
+    def refresh_default_timezone(self) -> str:
+        """Default timezone for refresh times WITHOUT an explicit suffix.
+
+        "local" = OS timezone of the machine running the proxy (default,
+        backwards compatible). Other accepted values: "UTC" or an IANA
+        name (e.g. "Europe/Rome"). Per-entry suffixes (Z / +HH:MM)
+        always win over this default.
+        """
+        return str(self.raw.get("refresh", {}).get("default_timezone", "local")).strip() or "local"
+
     # --- Health ---
     @property
     def initial_cooldown_seconds(self) -> int:

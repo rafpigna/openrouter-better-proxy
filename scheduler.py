@@ -13,7 +13,83 @@ from session import SessionManager
 from router import Router
 from migration import PriceMigration
 
+from datetime import datetime, timedelta, timezone, tzinfo
+try:
+    from zoneinfo import ZoneInfo  # py3.9+; on Windows requires the tzdata package
+except ImportError:  # pragma: no cover
+    ZoneInfo = None
+import re as _re
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Timezone-aware refresh time specs
+# ---------------------------------------------------------------------------
+# Entry formats (refresh.times):
+#   "HH:MM"        -> default timezone (refresh.default_timezone: local|UTC|IANA)
+#   "HH:MMZ"       -> UTC
+#   "HH:MM+02:00"  -> explicit fixed offset (also +0200 / -HH:MM forms)
+#   {from, to, step} window dicts: from/to accept the same suffixes.
+
+_TZ_SUFFIX_RE = _re.compile(r"^(?P<hm>\d{1,2}:\d{2})\s*(?P<tz>Z|z|[+-]\d{2}:?\d{2})?$")
+
+
+def resolve_tz(spec: str | None, default: str) -> tzinfo:
+    """Resolve a timezone spec ("local" | "UTC" | IANA | +HH:MM) to tzinfo.
+
+    "local" = OS timezone of the machine running the proxy.
+    Raises ValueError on unknown IANA names or malformed offsets.
+    """
+    s = (spec if spec is not None else default or "local").strip()
+    if s.lower() in ("local", ""):
+        return datetime.now().astimezone().tzinfo
+    if s.upper() in ("UTC", "Z"):
+        return timezone.utc
+    m = _re.match(r"^([+-])(\d{2}):?(\d{2})$", s)
+    if m:
+        sign = 1 if m.group(1) == "+" else -1
+        return timezone(sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3))))
+    if ZoneInfo is not None:
+        try:
+            return ZoneInfo(s)
+        except Exception as e:
+            raise ValueError(f"Unknown timezone {s!r}: {e}") from e
+    raise ValueError(f"Unknown timezone {s!r} (IANA names need Python zoneinfo/tzdata)")
+
+
+def parse_refresh_time(spec: str, default_tz: str) -> tuple[int, int, tzinfo]:
+    """Parse a "HH:MM[<tz>]" entry -> (hour, minute, tzinfo). Raises ValueError."""
+    m = _TZ_SUFFIX_RE.match(str(spec).strip())
+    if not m:
+        raise ValueError(f"Invalid refresh time {spec!r} (expected HH:MM, HH:MMZ or HH:MM+02:00)")
+    h, mn = map(int, m.group("hm").split(":"))
+    if not (0 <= h <= 23 and 0 <= mn <= 59):
+        raise ValueError(f"Invalid refresh time {spec!r}: hour/minute out of range")
+    tz_raw = m.group("tz")
+    if tz_raw in ("Z", "z"):
+        tz = timezone.utc
+    elif tz_raw:
+        tz = resolve_tz(tz_raw, default_tz)
+    else:
+        tz = resolve_tz(None, default_tz)
+    return h, mn, tz
+
+
+def next_trigger_for(spec: str, now_utc: datetime, default_tz: str) -> datetime:
+    """Next aware datetime matching a "HH:MM[<tz>]" entry, after now_utc.
+
+    Wall-clock semantics: the trigger is built in the entry's OWN timezone
+    (so "12:01Z" is always 12:01 UTC and "12:01" is 12:01 machine-time),
+    then compared against now_utc as absolute instants.
+    """
+    h, mn, tz = parse_refresh_time(spec, default_tz)
+    tz_now = now_utc.astimezone(tz)
+    trigger = tz_now.replace(hour=h, minute=mn, second=0, microsecond=0)
+    if trigger <= tz_now:
+        # timedelta handles month/year rollover (e.g. Jan 31 -> Feb 1)
+        trigger = trigger + timedelta(days=1)
+    return trigger
 
 
 class RefreshScheduler:
@@ -56,7 +132,15 @@ class RefreshScheduler:
             return
         self._running = True
         self._task = asyncio.create_task(self._run())
-        logger.info("Refresh scheduler started")
+        try:
+            tz = resolve_tz(None, config.refresh_default_timezone)
+            logger.info(
+                "Refresh scheduler started — times without suffix are "
+                f"interpreted in {tz} (refresh.default_timezone={config.refresh_default_timezone!r})"
+            )
+        except ValueError as e:
+            logger.warning(f"Invalid refresh.default_timezone ({e}) — no-suffix times will be skipped with warnings")
+            logger.info("Refresh scheduler started")
 
     async def stop(self):
         """Stop the scheduler."""
@@ -102,17 +186,17 @@ class RefreshScheduler:
         now = datetime.now(timezone.utc)
         current_time = now.time()
 
+        default_tz = config.refresh_default_timezone
+
         # Check explicit times
         next_times = []
         for time_spec in config.refresh_times:
             if isinstance(time_spec, str):
-                # Simple time like "10:00"
-                h, m = map(int, time_spec.split(":"))
-                trigger = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if trigger <= now:
-                    # timedelta handles month/year rollover (e.g. Jan 31 -> Feb 1)
-                    trigger = trigger + timedelta(days=1)
-                next_times.append(trigger)
+                # "HH:MM" (default tz), "HH:MMZ" (UTC), "HH:MM+02:00" (offset)
+                try:
+                    next_times.append(next_trigger_for(time_spec, now, default_tz))
+                except ValueError as e:
+                    logger.warning(f"Skipping invalid refresh time spec: {e}")
             elif isinstance(time_spec, dict):
                 # Window like {from: "18:00", to: "22:00", step: "05m"}
                 # Safeguard: YAML may parse times without colon as int (e.g. 18 -> 18)
@@ -120,17 +204,19 @@ class RefreshScheduler:
                 to_str = str(time_spec.get("to", "23:59"))
                 step_str = str(time_spec.get("step", "05m"))
 
-                # Skip if from/to aren't valid time strings
-                if ":" not in from_str or ":" not in to_str:
-                    logger.warning(f"Skipping invalid refresh time spec: {time_spec}")
+                # from/to accept the same suffixes ("18:00Z", "18:00+02:00");
+                # the window is computed in the `from` entry's own timezone.
+                try:
+                    from_h, from_m, from_tz = parse_refresh_time(from_str, default_tz)
+                    parse_refresh_time(to_str, default_tz)  # validated, used as window end marker
+                except ValueError as e:
+                    logger.warning(f"Skipping invalid refresh time spec: {time_spec} ({e})")
                     continue
 
-                from_h, from_m = map(int, from_str.split(":"))
-                to_h, to_m = map(int, to_str.split(":"))
-
                 # Calculate next trigger in window
-                trigger = now.replace(hour=from_h, minute=from_m, second=0, microsecond=0)
-                if trigger <= now:
+                tz_now = now.astimezone(from_tz)
+                trigger = tz_now.replace(hour=from_h, minute=from_m, second=0, microsecond=0)
+                if trigger <= tz_now:
                     # Add one day (timedelta handles month/year rollover)
                     trigger = trigger + timedelta(days=1)
 
@@ -142,7 +228,7 @@ class RefreshScheduler:
                     remaining = (5 - (minutes % 5)) % 5
                     if remaining:
                         trigger = trigger + timedelta(minutes=remaining)
-                    if trigger <= now:
+                    if trigger <= tz_now:
                         trigger = trigger + timedelta(days=1)
 
                 next_times.append(trigger)

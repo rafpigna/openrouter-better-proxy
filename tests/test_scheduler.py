@@ -213,10 +213,14 @@ class TestNextTriggerCalendarRollover:
         diff_detector = PriceDiffDetector(snapshot_dir="data/test-snapshots-cal")
         return RefreshScheduler(fetcher, cache, diff_detector, router, sessions, PriceMigration())
 
-    def _with_times(self, monkeypatch, times):
+    def _with_times(self, monkeypatch, times, tz="UTC"):
+        # NOTE: default_timezone="UTC" keeps these regression tests
+        # machine-independent (they predate the multi-timezone feature and
+        # were written under the old implicit-UTC semantics).
         from config import config
         monkeypatch.setitem(config.raw, "refresh",
                             {"interval_minutes": 30, "price_change_threshold": 10.0,
+                             "default_timezone": tz,
                              "times": times})
 
     @pytest.mark.asyncio
@@ -267,6 +271,72 @@ class TestNextTriggerCalendarRollover:
         monkeypatch.setattr(sched_mod, "datetime", _Frozen)
         trig = await s._wait_for_next_trigger()
         assert (trig.month, trig.day, trig.hour) == (8, 31, 9), trig
+
+
+class TestTimezoneAwareTimes:
+    """Multi-timezone refresh times (2026-08-31): entries accept an explicit
+    suffix (Z = UTC, +HH:MM = fixed offset) and refresh.default_timezone
+    resolves the plain ones. Machine-local semantics = backwards compatible
+    default; UTC semantics = what the pre-feature code did."""
+
+    def _scheduler(self):
+        backoff = BackoffManager()
+        sessions = SessionManager()
+        cache = EndpointCache(data_dir="data/test-cache-sched-cal")
+        router = Router(backoff, sessions, cache)
+        fetcher = EndpointFetcher(api_key="test-key", cache=cache)
+        diff_detector = PriceDiffDetector(snapshot_dir="data/test-snapshots-cal")
+        return RefreshScheduler(fetcher, cache, diff_detector, router, sessions, PriceMigration())
+
+    def _freeze(self, monkeypatch, now):
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now if tz else now.replace(tzinfo=None)
+        import scheduler as sched_mod
+        monkeypatch.setattr(sched_mod, "datetime", _Frozen)
+
+    def _with_times(self, monkeypatch, times, tz="local"):
+        from config import config
+        monkeypatch.setitem(config.raw, "refresh",
+                            {"interval_minutes": 30, "price_change_threshold": 10.0,
+                             "default_timezone": tz,
+                             "times": times})
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("tz,entry,expected_utc", [
+        # "12:01" with default UTC == old behaviour
+        ("UTC", "12:01", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
+        # "12:01Z" explicit UTC regardless of default
+        ("local", "12:01Z", datetime(2026, 8, 31, 12, 1, tzinfo=timezone.utc)),
+        # "12:01+02:00" explicit offset == 10:01 UTC
+        ("local", "12:01+02:00", datetime(2026, 8, 31, 10, 1, tzinfo=timezone.utc)),
+        # "12:01-05:30" negative offset == 17:31 UTC
+        ("UTC", "12:01-05:30", datetime(2026, 8, 31, 17, 31, tzinfo=timezone.utc)),
+    ])
+    async def test_entry_timezones(self, monkeypatch, tz, entry, expected_utc):
+        s = self._scheduler()
+        self._with_times(monkeypatch, [entry], tz=tz)
+        self._freeze(monkeypatch, datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc))
+        trig = await s._wait_for_next_trigger()
+        assert trig == expected_utc, f"entry={entry!r} default={tz!r} -> {trig}"
+
+    @pytest.mark.asyncio
+    async def test_invalid_entries_skipped_not_fatal(self, monkeypatch):
+        s = self._scheduler()
+        self._with_times(monkeypatch, ["25:00", "abc", 12, "09:00"], tz="UTC")
+        self._freeze(monkeypatch, datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc))
+        trig = await s._wait_for_next_trigger()
+        # only the valid "09:00" survives (note: bare int 12 is skipped as neither str nor dict)
+        assert (trig.hour, trig.minute) == (9, 0), trig
+
+    @pytest.mark.asyncio
+    async def test_no_times_falls_back_to_interval(self, monkeypatch):
+        s = self._scheduler()
+        self._with_times(monkeypatch, [], tz="UTC")
+        self._freeze(monkeypatch, datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc))
+        trig = await s._wait_for_next_trigger()
+        assert trig == datetime(2026, 8, 31, 8, 30, tzinfo=timezone.utc), trig
 
 
 if __name__ == "__main__":
