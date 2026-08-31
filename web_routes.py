@@ -167,9 +167,12 @@ class MaxPriceModel(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    quantizations: list[str] = Field(..., min_length=1)
     providers: list[str] = Field(..., min_length=1)
     max_price: MaxPriceModel = Field(...)
+    # NOTE: quantization is NOT part of the config anymore (removed 2026-08-27):
+    # every OpenRouter endpoint is a provider+quant pair and OR can reshape the
+    # slug/quant at any time, so gating or sorting on it broke routing. Any
+    # leftover `quantizations:` key in old YAML files is silently ignored.
     # Per-model routing strategy (optional):
     #   - "providers" / absent: pin attempts via body `provider.only` (default)
     #   - "presets": swap ONLY the outgoing `model` to the mapped OpenRouter
@@ -671,7 +674,7 @@ async def api_logs_download(
         output = io.StringIO()
         writer = csv.writer(output, quoting=csv.QUOTE_ALL)
         if source == "proxy":
-            fields = ["ts", "type", "model", "provider", "tier", "session_id", "stream",
+            fields = ["ts", "type", "model", "provider", "quant", "session_id", "stream",
                       "status", "tokens_in", "tokens_out", "tokens_cached",
                       "tokens_reasoning", "cost", "latency_ms", "error",
                       "provider_response", "model_response"]
@@ -691,7 +694,7 @@ async def api_logs_download(
     elif format == "txt" and source == "proxy":
         # TXT from proxy data: format as readable lines
         content = "\n".join(
-            f"{e.get('ts','')} [{e.get('status','')}] {e.get('model','')} → {e.get('provider','')} "
+            f"{e.get('ts','')} [{e.get('status','')}] {e.get('model','')} -> {e.get('provider','')} "
             f"in={e.get('tokens_in','')} out={e.get('tokens_out','')} cost={e.get('cost','')} "
             f"lat={e.get('latency_ms','')}ms"
             for e in filtered

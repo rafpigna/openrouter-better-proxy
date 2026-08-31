@@ -5,9 +5,12 @@ Cache key: data/or_endpoints_<model>.json
 """
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class EndpointCache:
@@ -29,7 +32,24 @@ class EndpointCache:
         return self._cache.get(model_id)
 
     def set(self, model_id: str, data: dict) -> None:
-        """Cache endpoints for a model and persist to disk."""
+        """Cache endpoints for a model and persist to disk.
+
+        Before overwriting, diffs the endpoint tags against the previous
+        in-memory snapshot and logs any change at INFO (slug-watcher):
+        OpenRouter reshapes slugs/quantizations over time (e.g.
+        "deepseek/fp8" -> "deepseek" with quantization "unknown") and such
+        changes used to silently alter routing behaviour.
+        """
+        old = self._cache.get(model_id)
+        if old:
+            old_tags = {e.get("tag") for e in (old.get("endpoints") or []) if e.get("tag")}
+            new_tags = {e.get("tag") for e in (data.get("endpoints") or []) if e.get("tag")}
+            appeared = new_tags - old_tags
+            vanished = old_tags - new_tags
+            if appeared:
+                logger.info(f"[slug-watch] {model_id}: new endpoint tags: {sorted(appeared)}")
+            if vanished:
+                logger.info(f"[slug-watch] {model_id}: removed endpoint tags: {sorted(vanished)}")
         self._cache[model_id] = data
         self._save(model_id, data)
 

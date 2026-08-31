@@ -66,9 +66,9 @@ class TestRouterSelection:
         router, _, _, cache = components
 
         endpoints = [
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
-            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
+            {"tag": "streamlake/fp8", "quantization": "fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "gmicloud/fp8", "quantization": "fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -84,9 +84,9 @@ class TestRouterSelection:
         router, _, _, cache = components
 
         endpoints = [
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
             # cheaper but NOT in providers list
-            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+            {"tag": "open-inference/fp4", "quantization": "fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -100,7 +100,7 @@ class TestRouterSelection:
 
         # Only NON-authorized fp4 providers available
         endpoints = [
-            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+            {"tag": "open-inference/fp4", "quantization": "fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
             {"tag": "sail-research/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000018", "input_cache_read": "0.000000020"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
@@ -112,8 +112,9 @@ class TestRouterSelection:
         assert router.select_candidates("deepseek/deepseek-v4-flash-0731") == []
         assert router.select_provider("deepseek/deepseek-v4-flash-0731") is None
 
-    def test_fallback_to_lower_tier_when_authorized(self, components, monkeypatch):
-        """Tier fallback (fp8 -> fp4) happens ONLY among authorized providers."""
+    def test_fallback_among_authorized_by_list_order(self, components, monkeypatch):
+        """Failover happens ONLY among authorized providers, in config list order
+        (quantization plays no role since its removal)."""
         router, backoff, _, cache = components
 
         # Authorize a provider that has an fp4 variant, plus fp8 deepinfra
@@ -126,8 +127,8 @@ class TestRouterSelection:
         monkeypatch.setattr(config, "get_model_config", cfg.get_model_config)
 
         endpoints = [
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
-            {"tag": "open-inference/fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "open-inference/fp4", "quantization": "fp4", "pricing": {"prompt": "0.000000065", "completion": "0.00000014", "input_cache_read": "0.000000014"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -136,19 +137,19 @@ class TestRouterSelection:
 
         result = router.select_provider("deepseek/deepseek-v4-flash-0731")
         assert result is not None
-        slug, tier = result
-        assert tier == "fp4"
+        slug, quant = result
         assert slug == "open-inference/fp4"
+        assert quant == "fp4"  # display-only label from the endpoint
 
     def test_select_candidates_ordered_list(self, components):
         """select_candidates returns the ordered list used for failover."""
         router, _, _, cache = components
 
         endpoints = [
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "streamlake/fp8", "quantization": "fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
             # gmicloud input 0.112 $/M > max_price input 0.10 -> filtered by price
-            {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
+            {"tag": "gmicloud/fp8", "quantization": "fp8", "pricing": {"prompt": "0.000000112", "completion": "0.000000224", "input_cache_read": "0.0000000224"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -161,7 +162,7 @@ class TestRouterSelection:
         router, _, _, cache = components
 
         endpoints = [
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
             {"tag": "expensive/provider", "pricing": {"prompt": "0.00000015", "completion": "0.00000030", "input_cache_read": "0.00000005"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
@@ -176,8 +177,8 @@ class TestRouterSelection:
         router, _, sessions, cache = components
 
         endpoints = [
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
+            {"tag": "streamlake/fp8", "quantization": "fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -203,7 +204,7 @@ class TestRouterSelection:
 
         endpoints = [
             {"tag": "gmicloud/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
-            {"tag": "streamlake/fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
+            {"tag": "streamlake/fp8", "quantization": "fp8", "pricing": {"prompt": "0.0000000786", "completion": "0.00000015719", "input_cache_read": "0.00000001572"}},
         ]
         cache.set("deepseek/deepseek-v4-flash-0731", {"endpoints": endpoints, "fetched_at": datetime.utcnow().isoformat()})
 
@@ -288,8 +289,8 @@ class TestAllowlistBaseNormalization:
         router, cache = self._router_with_tag_config(
             monkeypatch, ["z-ai/fp8", "novita/fp8", "gmicloud/fp8"])
         eps = [
-            {"tag": "z-ai/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
-            {"tag": "deepinfra/fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},  # NOT authorized
+            {"tag": "z-ai/fp8", "quantization": "fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
+            {"tag": "deepinfra/fp8", "quantization": "fp8", "pricing": {"prompt": "0.00000008", "completion": "0.00000018", "input_cache_read": "0.000000016"}},  # NOT authorized
         ]
         cache.set("m/m1", {"endpoints": eps, "fetched_at": datetime.utcnow().isoformat()})
         assert router.select_candidates("m/m1") == [("z-ai/fp8", "fp8")]
@@ -300,7 +301,7 @@ class TestAllowlistBaseNormalization:
         router, cache = self._router_with_tag_config(
             monkeypatch, ["novita/fp8", "z-ai"])
         eps = [
-            {"tag": "z-ai/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
+            {"tag": "z-ai/fp8", "quantization": "fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000024", "input_cache_read": "0.000000015"}},
             {"tag": "novita/fp8", "pricing": {"prompt": "0.000000075", "completion": "0.00000025", "input_cache_read": "0.000000015"}},
         ]
         cache.set("m/m1", {"endpoints": eps, "fetched_at": datetime.utcnow().isoformat()})

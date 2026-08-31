@@ -168,7 +168,7 @@ def _is_transient_status(status: int) -> bool:
 def _write_proxy_log(
     model_id: str,
     provider_slug: str,
-    tier: str,
+    quant: str,
     session_id: str | None,
     stream: bool,
     status_code: int,
@@ -206,7 +206,7 @@ def _write_proxy_log(
         "type": "error" if error_message or (status_code != 200 and status_code != 0) else "request",
         "model": model_id,
         "provider": provider_slug,
-        "tier": tier,
+        "quant": quant,
         "session_id": session_id,
         "stream": stream,
         "status": status_code,
@@ -254,6 +254,55 @@ async def list_models():
     return {"data": models, "object": "list"}
 
 
+# --- Client-discovery compatibility aliases ----------------------------------
+# Many OpenAI-compatible clients (Hermes, OpenWebUI, llama.cpp-based UIs...)
+# probe well-known paths that the proxy did not serve, producing noisy 404s
+# and — worse — empty model pickers. All aliases serve the SAME curated list.
+# /v1/models/{id} additionally returns an OpenAI-shaped detail object so
+# model-detail views do not break.
+@router.get("/api/v1/models")
+@router.get("/api/models")
+async def list_models_alias():
+    return await list_models()
+
+
+@router.get("/v1/models/{model_id:path}")
+@router.get("/api/v1/models/{model_id:path}")
+async def model_detail(model_id: str):
+    """OpenAI-shaped model detail; 404 only for models outside the config."""
+    if model_id not in config.models:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    mc = config.get_model_config(model_id) or {}
+    return {
+        "id": model_id,
+        "object": "model",
+        "created": 0,
+        "owned_by": "router",
+        "context_length": None,
+        "pricing": mc.get("max_price", {}),
+    }
+
+
+@router.get("/api/tags")
+async def ollama_tags():
+    """Ollama-style tags endpoint (some UIs probe it for discovery)."""
+    return {"models": [{"name": mid, "model": mid} for mid in config.models]}
+
+
+@router.get("/v1/props")
+@router.get("/props")
+async def props_alias():
+    """Properties endpoint probed by some OpenAI-compatible UIs."""
+    return {"models": list(config.models)}
+
+
+@router.get("/version")
+async def version_alias():
+    """Version endpoint probed by Ollama-style clients."""
+    return {"version": "openrouter-better-proxy"}
+
+
 async def _forward_stream(
     body: dict,
     candidates: list[tuple[str, str]],
@@ -286,7 +335,7 @@ async def _forward_stream(
     delay = max(0.0, config.retry_delay_seconds)
 
     model_is_preset = _is_preset_mode(body.get("model", ""))
-    for provider_slug, tier in candidates:
+    for provider_slug, quant in candidates:
         # Preset mode: swap ONLY the `model` field to the mapped preset slug
         # (no `provider` pin — the preset fixes the endpoint on OR's side).
         # Providers mode: pin this attempt to the authorized provider.
@@ -371,7 +420,7 @@ async def _forward_stream(
                             f"mid-stream: {e}",
                         )
                         _write_proxy_log(
-                            model_id, provider_slug, tier, session_id, True,
+                            model_id, provider_slug, quant, session_id, True,
                             502, None, int((time.monotonic() - start) * 1000),
                             f"mid-stream: {e}", provider_response, model_response,
                         )
@@ -393,7 +442,7 @@ async def _forward_stream(
                             int((time.monotonic() - start) * 1000),
                         )
                         _write_proxy_log(
-                            model_id, provider_slug, tier, session_id, True,
+                            model_id, provider_slug, quant, session_id, True,
                             200, usage, int((time.monotonic() - start) * 1000),
                             None, provider_response, model_response,
                         )
@@ -406,7 +455,7 @@ async def _forward_stream(
                         int((time.monotonic() - start) * 1000),
                     )
                     _write_proxy_log(
-                        model_id, provider_slug, tier, session_id, True,
+                        model_id, provider_slug, quant, session_id, True,
                         200, usage, int((time.monotonic() - start) * 1000),
                         None, provider_response, model_response,
                     )
@@ -443,7 +492,7 @@ async def _forward_stream(
             provider_text or "no response",
         )
         _write_proxy_log(
-            model_id, provider_slug, tier, session_id, True,
+            model_id, provider_slug, quant, session_id, True,
             provider_status or 503, None, int((time.monotonic() - start) * 1000),
             provider_text or "no response", None, None,
         )
@@ -518,8 +567,8 @@ async def chat_completions(request: Request):
             detail=f"No authorized provider available for model {model_id}",
         )
 
-    provider_slug, tier = candidates[0]
-    logger.info(f"Routing {model_id} → {provider_slug} (tier={tier}) [candidates={len(candidates)}]")
+    provider_slug, quant = candidates[0]
+    logger.info(f"Routing {model_id} -> {provider_slug} (quant={quant}) [candidates={len(candidates)}]")
 
     # VERBATIM PASSTHROUGH: the proxy must never alter the request CONTENT.
     # Routing is the proxy's ONLY concern (provider pin is injected per-attempt
@@ -573,7 +622,7 @@ async def _forward_non_stream(
     delay = max(0.0, config.retry_delay_seconds)
 
     model_is_preset = _is_preset_mode(body.get("model", ""))
-    for provider_slug, tier in candidates:
+    for provider_slug, quant in candidates:
         # Preset mode: swap ONLY the `model` field to the mapped preset slug
         # (no `provider` pin — the preset fixes the endpoint on OR's side).
         # Providers mode: pin this attempt to the authorized provider.
@@ -629,7 +678,7 @@ async def _forward_non_stream(
                     provider_response, model_response, latency_ms,
                 )
                 _write_proxy_log(
-                    model_id, provider_slug, tier, session_id, False,
+                    model_id, provider_slug, quant, session_id, False,
                     200, usage, latency_ms, None, provider_response, model_response,
                 )
                 return response_data
@@ -661,7 +710,7 @@ async def _forward_non_stream(
             provider_text or "no response",
         )
         _write_proxy_log(
-            model_id, provider_slug, tier, session_id, False,
+            model_id, provider_slug, quant, session_id, False,
             provider_status or 503, None, int((time.monotonic() - start) * 1000),
             provider_text or "no response", None, None,
         )
