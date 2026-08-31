@@ -46,19 +46,28 @@ class SSELogHandler(logging.Handler):
     # ------------------------------------------------------------------
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Format and dispatch a log record to all connected clients."""
+        """Format and dispatch a log record to all connected clients.
+
+        The SSE frame is built HERE, once per record, with the timestamp
+        taken from record.created (the moment the record was logged),
+        NOT from the moment a client receives/replays it. Both the
+        recent buffer and the per-client queues carry ready-made frames,
+        so replayed records keep their original time.
+        """
         try:
-            formatted = self.format(record)
+            message = self.format(record)
         except Exception:  # pragma: no cover
             self.handleError(record)
             return
 
+        frame = format_log_record(message, record.created)
+
         with self._lock:
-            self._recent.append(formatted)
+            self._recent.append(frame)
             stale: list[int] = []
             for cid, q in self._clients.items():
                 try:
-                    q.put_nowait(formatted)
+                    q.put_nowait(frame)
                 except queue.Full:
                     stale.append(cid)
             for cid in stale:
@@ -112,10 +121,18 @@ class SSELogHandler(logging.Handler):
             return list(self._recent)
 
 
-def format_log_record(record: str) -> str:
-    """Wrap a log string as an SSE data frame."""
+def format_log_record(record: str, created: float | None = None) -> str:
+    """Wrap a log message as an SSE data frame.
+
+    `created` is the LogRecord.created epoch (seconds). When given, the
+    frame timestamp reflects when the record was LOGGED; when omitted
+    (legacy callers), it falls back to the current time.
+    """
     safe = record.replace("\n", "\\n")
-    payload = json.dumps({"t": time.strftime("%H:%M:%S"), "m": safe})
+    ts = time.localtime(created) if created is not None else time.localtime()
+    payload = json.dumps(
+        {"t": time.strftime("%Y-%m-%d %H:%M:%S", ts), "m": safe}
+    )
     return f"data: {payload}\n\n"
 
 
@@ -142,10 +159,12 @@ async def sse_log_generator(
                 # Non-blocking poll with a short timeout,
                 #    # running inside the default executor to avoid blocking the
                 # event loop on queue.get().
-                record = await loop.run_in_executor(
+                # The queue carries READY-MADE SSE frames (built in emit()
+                # with the record's original timestamp) — yield verbatim.
+                frame = await loop.run_in_executor(
                     None, log_queue.get, True, poll_timeout
                 )
-                yield format_log_record(record)
+                yield frame
                 last_heartbeat = time.monotonic()
             except queue.Empty:
                 # No new records —    check if a heartbeat is due.

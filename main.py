@@ -91,8 +91,10 @@ async def lifespan(app: FastAPI):
         if config.sse_log_enabled:
             from log_handler import SSELogHandler
             _log_handler = SSELogHandler(level=logging.INFO)
+            # No %(asctime)s: the SSE frame carries its own timestamp
+            # (from LogRecord.created) in the `t` field — one clock per row.
             _log_handler.setFormatter(
-                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+                logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
             )
             logging.getLogger().addHandler(_log_handler)
             logger.info("SSE live log enabled — SSELogHandler attached")
