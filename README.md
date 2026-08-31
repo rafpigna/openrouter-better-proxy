@@ -10,7 +10,7 @@ A local proxy that sits between Hermes Agent and OpenRouter, taking control of p
 
 The proxy intercepts requests from Hermes (or any OpenAI-compatible client) and routes them to the best available OpenRouter provider based on:
 
-- **Quantization tier** — prefers higher quality (fp8 over fp4)
+- **Provider allowlist** — explicit priority order per model; optional preset-slug routing (`strategy: presets`)
 - **Current price** — respects a `max_price` cap per model
 - **Provider health** — backs off providers that return errors
 - **Session stickiness** — keeps the same provider for the duration of a session to preserve prompt cache
@@ -244,17 +244,14 @@ Each model gets its own section. The proxy supports multiple models in a single 
 ```yaml
 models:
   "deepseek/deepseek-v4-flash-0731":
-    quantizations: ["fp8", "fp4"]        # Priority order (tiered selection)
-    providers: ["deepseek", "deepinfra", "streamlake", "gmicloud"]  # Priority order
+    providers: ["deepseek", "deepinfra", "streamlake", "gmicloud"]  # Priority order (allowlist)
     max_price:
       input: 0.10                        # $/M token — max prompt price
       completion: 0.25                   # $/M token — max completion price
       cache: 0.05                        # $/M token — max cache read price
 ```
 
-**`quantizations`** — List of quantization tiers in priority order. The router selects the highest-priority tier that has at least one healthy, affordable provider. If no fp8 provider is available, it falls back to fp4.
-
-**`providers`** — List of provider slugs (the part before `/` in tags like `deepinfra/fp8`) in priority order. A provider listed here but without an endpoint in the selected tier is skipped.
+**`providers`** — Allowlist of provider tags (base names like `deepinfra` or full tags like `deepinfra/fp8`) in priority order. The quantization lives in the tag itself (`deepinfra/fp8` vs `deepinfra/fp4`), so listing the tag is how you select the quality you want. A provider listed here without a fetched endpoint is skipped. OpenRouter can reshape slugs at any time — the allowlist is normalised on provider bases, so renames of the quant suffix don't break your config.
 
 **`max_price`** — Price caps in $/M token. An endpoint is excluded if ANY of its prices exceed the cap. Use `0` or omit to disable a cap.
 
@@ -304,17 +301,21 @@ Controls how often the proxy fetches updated pricing from OpenRouter.
 
 ```yaml
 refresh:
-  interval_minutes: 30                 # Periodic refresh interval
-  price_change_threshold: 1         # Price-change threshold in % (10 = 10%)
-  times:                               # Explicit refresh times (can be dense)
+  interval_minutes: 30                 # Periodic refresh — ALWAYS runs
+  price_change_threshold: 10           # Price-change threshold in % points (10 = 10%)
+  default_timezone: local              # Clock for times WITHOUT suffix: local | UTC
+  times:                               # Fixed times IN ADDITION to the interval (can be dense)
     - "10:00"
-    - "10:05"
-    - "10:10"
-    - "16:00"
+    - "19:05UTC"
     - {from: "18:00", to: "22:00", step: "05m"}  # Window with step
 ```
 
-The scheduler combines periodic and explicit triggers. During dense windows (e.g., peak-hour transitions), it refreshes more frequently to catch price changes quickly.
+**How the schedule works (2026-08-31):**
+
+- The periodic interval **always fires** — fixed times and dense windows are **in addition**, never a replacement. If a fixed time and the interval land on the same instant, they collapse into one refresh; near-simultaneous ones simply queue (never concurrent).
+- Time formats: a time **without suffix** follows `default_timezone` (`local` = the OS timezone of the machine running the proxy; `UTC`); a time ending in **`UTC`** (e.g. `19:05UTC`) always runs on the UTC clock. That's the whole grammar — no other timezone syntax is accepted. If the machine clock looks wrong, fix the machine; for any other timezone, convert the times to UTC yourself. The dashboard **System Time** widget (and the sidebar clock) always show machine-local vs UTC side by side.
+- Fixed times added or removed from the dashboard take effect **immediately** — the scheduler re-arms on config save, no restart needed, and Next Refresh in the UI updates at once.
+- During dense windows (e.g. peak-hour transitions), refreshes happen at the configured step to catch price changes quickly.
 
 #### Health / backoff settings
 
@@ -335,7 +336,7 @@ health:
 | Error after 1h cooldown | 12 hours |
 | Success | Reset |
 
-If all providers in a tier are in cooldown, the router falls back to the next lower quantization tier.
+If all authorized providers for a model are in cooldown, requests to it fail with "No valid provider found" until a cooldown expires (or a manual refresh repopulates healthy endpoints).
 
 #### Retry settings
 
@@ -416,7 +417,6 @@ With `strategy: presets`, each forwarding attempt instead targets an OpenRouter 
 ```yaml
 models:
   deepseek/deepseek-v4-flash-0731:
-    quantizations: [fp8]
     providers: [deepinfra, streamlake]        # candidates + their order (allowlist)
     max_price: {input: 0.25, completion: 0.7, cache: 0.22}
     strategy: presets                          # "providers" = default behaviour
@@ -620,7 +620,7 @@ Open `http://<host>:<port>/dashboard/` in your browser.
 
 ### Sections
 
-- **Dashboard** — system overview cards (models, sessions, providers, errors), OS metrics with polling interval, Recent Activity table (structured proxy log entries: model, provider, tier, tokens, cache, cost, latency, status) and action buttons.
+- **Dashboard** — system overview cards (models, sessions, providers, errors), OS metrics with polling interval, System Time widget (machine-local vs UTC), Recent Activity table (structured proxy log entries: model, provider, resp provider, quant, tokens, cache, cost, latency, status) and action buttons.
 - **Models** — add/edit/remove models from config; provider picker fetching live prices/quantization/uptime from OpenRouter; per-model price caps.
 - **Proxy Settings** — Migration, Refresh timer, Health, 🔁 Retry, 🏷 App Attribution, 🐞 Debug Request Log.
 - **Logs** — paginated structured log with filters (model/provider/status/session/date) + downloads (JSONL/CSV/TXT) + Delete All Logs (GDPR).
@@ -721,7 +721,7 @@ The router returns a 400 error with a message indicating no valid provider was f
 
 ### Can I add more models?
 
-Yes. Add a new section under `models:` in `routing_config.yaml`. Each model is configured independently with its own quantization tiers, provider order, and price caps.
+Yes. Add a new section under `models:` in `routing_config.yaml`. Each model is configured independently with its own provider allowlist and price caps.
 
 ### How do I update the proxy?
 
