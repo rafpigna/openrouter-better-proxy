@@ -1,13 +1,13 @@
 # OpenRouter Better Proxy — Configuration
 #
-# This file mirrors the RUNNING configuration deployed on LXC 251 (the
-# source of truth — the proxy is tested against this exact config).
-# The repo copy is kept aligned with production; end users can adapt it.
+# Example configuration. Adjust hosts/models/prices to your environment.
 #
-# DS4 model (test setup): streamlake added to providers and max_price raised
-# so that deepseek, deepinfra, streamlake AND gmicloud all pass the price
-# gate — this lets the failover actually exercise multiple authorized
-# providers instead of collapsing to a single one.
+# QUANTIZATION NOTE (2026-08-27): the `quantizations` key is GONE. Every
+# OpenRouter endpoint is a provider+quant pair (the quant lives in the slug)
+# and OpenRouter can reshape slugs at any time (e.g. "deepseek/fp8" ->
+# "deepseek"), so quantization no longer gates or sorts candidates.
+# Selection = provider list order, then price. The `strategy: presets` block
+# (commented example below) switches a model to preset-slug routing.
 
 server:
     host: 0.0.0.0
@@ -18,21 +18,26 @@ server:
 # Models managed: each section defines a model.
 models:
     deepseek/deepseek-v4-flash-0731:
-        quantizations:
-          - fp8
-          - fp4
-        providers:
+        providers:            # allowlist + priority order (base or full tags)
           - deepseek
           - deepinfra
           - streamlake
           - gmicloud
-        max_price:                     # $/M tokens; raised so all 4 providers pass
+        max_price:            # $/M tokens gate
             input: 0.30
             completion: 0.80
             cache: 0.10
+        # --- Optional: preset-slug routing (strategy: presets) -------------
+        # Each attempt targets the mapped OpenRouter preset slug instead of
+        # pinning `provider.only`: the outgoing body swaps ONLY `model` and
+        # carries no `provider` object. Keys are provider BASES.
+        #
+        # strategy: presets
+        # presets:
+        #     deepinfra: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-deepinfra
+        #     streamlake: deepseek/deepseek-v4-flash-0731@preset/deepseekv4flash-streamlake
+
     z-ai/glm-5.3:
-        quantizations:
-          - fp8
         providers:
           - z-ai/fp8
         max_price:
@@ -51,7 +56,7 @@ migration:
 refresh:
     interval_minutes: 30
     price_change_threshold: 10.0      # percent points (10 = 10%)
-    times: []
+    times: []                         # optional fixed times, e.g. ['03:01', '08:01']
 
 health:
     initial_cooldown_seconds: 300
@@ -64,3 +69,8 @@ health:
 retry:
     max_attempts: 3        # total attempts per provider (3 = up to 2 retries)
     delay_seconds: 2.5     # fixed delay between retry attempts
+
+# App attribution headers towards OpenRouter (HTTP-Referer / X-Title).
+attribution:
+    mode: passthrough      # passthrough | fallback | force
+    headers: {}
