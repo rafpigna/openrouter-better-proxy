@@ -149,8 +149,21 @@ app = FastAPI(
 app.include_router(routes_router)
 
 
+def _force_utf8_stdio():
+    """Windows console safety net: stdio defaults to cp1252 and any non-ASCII
+    log char crashes logging with UnicodeEncodeError. All runtime log strings
+    are ASCII anyway; this guards against future regressions."""
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
     """Start uvicorn."""
+    _force_utf8_stdio()
     import argparse
 
     parser = argparse.ArgumentParser(description="OpenRouter Better Proxy")
