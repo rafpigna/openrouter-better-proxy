@@ -298,6 +298,24 @@ async def _read_config_dict() -> dict:
     return yaml.safe_load(raw) or {} if raw else {}
 
 
+async def _reschedule_after_config_change() -> None:
+    """Wake the scheduler so the reloaded config takes effect immediately.
+
+    Without this, the loop keeps sleeping until the previously computed
+    trigger: fixed times added/removed from the dashboard would only apply
+    at the next natural firing (or after a restart), and Next Refresh on
+    the dashboard would show a stale value. Best effort: a failure here
+    must not fail the config save.
+    """
+    try:
+        from main import get_scheduler
+        scheduler = get_scheduler()
+        if scheduler is not None and hasattr(scheduler, "reschedule"):
+            await scheduler.reschedule()
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"Scheduler re-arm after config change failed: {e}")
+
+
 def _validate_config_schema(data: dict) -> ConfigSchema:
     """Raise HTTPException(400) on invalid config."""
     try:
@@ -370,6 +388,11 @@ async def put_config(request: Request):
     # Reload config in the running process
     from config import config
     config.load()
+
+    # Re-arm the scheduler: the loop sleeps until the previously computed
+    # trigger, so config changes (fixed times added/removed) would otherwise
+    # only take effect at the NEXT natural firing or at a restart.
+    await _reschedule_after_config_change()
 
     return {
         "status": "ok",
@@ -1000,6 +1023,9 @@ async def api_config_import(request: Request):
     # Reload config in the running process
     from config import config
     config.load()
+
+    # Re-arm the scheduler (see _reschedule_after_config_change)
+    await _reschedule_after_config_change()
 
     return {
         "status": "ok",

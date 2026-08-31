@@ -117,6 +117,10 @@ class RefreshScheduler:
         if self._running:
             return
         self._running = True
+        # Event used to WAKE the loop early when the config changes, so a
+        # fixed time added/removed from the dashboard takes effect at once
+        # (instead of sleeping until the previously computed trigger).
+        self._wake_event = asyncio.Event()
         self._task = asyncio.create_task(self._run())
         try:
             tz = resolve_tz(None, config.refresh_default_timezone)
@@ -128,9 +132,24 @@ class RefreshScheduler:
             logger.warning(f"Invalid refresh.default_timezone ({e}) — no-suffix times will be skipped with warnings")
             logger.info("Refresh scheduler started")
 
+    async def reschedule(self):
+        """Re-arm the scheduler after a config change.
+
+        Wakes the sleeping loop; it re-computes the next trigger from the
+        reloaded config and sleeps again. A refresh already in flight is
+        NEVER interrupted — it completes, then the loop continues (queued
+        semantics). Safe to call multiple times.
+        """
+        ev = getattr(self, "_wake_event", None)
+        if ev is not None and self._running:
+            ev.set()
+
     async def stop(self):
         """Stop the scheduler."""
         self._running = False
+        ev = getattr(self, "_wake_event", None)
+        if ev is not None:
+            ev.set()
         if self._task:
             self._task.cancel()
             try:
@@ -140,7 +159,7 @@ class RefreshScheduler:
         logger.info("Refresh scheduler stopped")
 
     async def _run(self):
-        """Main scheduler loop."""
+        """Main scheduler loop (event-aware sleep)."""
         logger.info("Scheduler loop started")
 
         while self._running:
@@ -153,9 +172,23 @@ class RefreshScheduler:
                     # next_run is a datetime (timezone-aware UTC)
                     self._next_run = next_run
                     now = datetime.now(timezone.utc)
-                    delay = (next_run - now).total_seconds()
-                    if delay > 0:
-                        await asyncio.sleep(delay)
+                    delay = max(0.0, (next_run - now).total_seconds())
+                    wake = getattr(self, "_wake_event", None)
+                    if wake is not None:
+                        wake.clear()
+                    try:
+                        if delay > 0:
+                            if wake is not None:
+                                # Sleep until the trigger OR until a config
+                                # change sets the wake event, whichever first.
+                                await asyncio.wait_for(wake.wait(), timeout=delay)
+                                logger.info("Config changed — scheduler re-armed")
+                                continue
+                        else:
+                            await self._refresh_all()
+                            continue
+                    except asyncio.TimeoutError:
+                        pass  # trigger due: fall through to the refresh
                     await self._refresh_all()
             except asyncio.CancelledError:
                 break
@@ -166,16 +199,24 @@ class RefreshScheduler:
     async def _wait_for_next_trigger(self):
         """Calculate next trigger time.
 
-        Returns:
-            'immediate' if should refresh now, or datetime for next trigger.
+        Semantics (2026-08-31, user decision): the periodic interval ALWAYS
+        fires — fixed times and dense windows are IN ADDITION, never a
+        replacement. The returned datetime is the EARLIEST of all pending
+        triggers; the loop simply re-computes after each refresh, so a
+        fixed time due at the same instant as the interval collapses into
+        ONE refresh (and near-simultaneous ones naturally queue behind the
+        awaited _refresh_all — no concurrent refreshes, no skips).
         """
         now = datetime.now(timezone.utc)
         current_time = now.time()
 
         default_tz = config.refresh_default_timezone
 
-        # Check explicit times
-        next_times = []
+        # 1) Periodic interval — ALWAYS a candidate, "even if the world falls apart"
+        interval = config.refresh_interval_minutes * 60
+        next_times = [datetime.fromtimestamp(now.timestamp() + interval, timezone.utc)]
+
+        # 2) Explicit times 
         for time_spec in config.refresh_times:
             if isinstance(time_spec, str):
                 # "HH:MM" (default tz), "HH:MMZ" (UTC), "HH:MM+02:00" (offset)
@@ -219,13 +260,10 @@ class RefreshScheduler:
 
                 next_times.append(trigger)
 
-        if next_times:
-            return min(next_times)
-
-        # Fall back to periodic
-        interval = config.refresh_interval_minutes * 60
-        next_run = now.timestamp() + interval
-        return datetime.fromtimestamp(next_run, timezone.utc)
+        # Earliest of {interval (always), fixed times, dense windows}:
+        # simultaneous triggers collapse into ONE refresh; near-simultaneous
+        # ones queue behind the awaited _refresh_all (no concurrency).
+        return min(next_times)
 
     async def _refresh_all(self):
         """Refresh endpoints for all configured models."""

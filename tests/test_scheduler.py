@@ -213,20 +213,21 @@ class TestNextTriggerCalendarRollover:
         diff_detector = PriceDiffDetector(snapshot_dir="data/test-snapshots-cal")
         return RefreshScheduler(fetcher, cache, diff_detector, router, sessions, PriceMigration())
 
-    def _with_times(self, monkeypatch, times, tz="UTC"):
+    def _with_times(self, monkeypatch, times, tz="UTC", interval_minutes=30):
         # NOTE: default_timezone="UTC" keeps these regression tests
         # machine-independent (they predate the multi-timezone feature and
         # were written under the old implicit-UTC semantics).
         from config import config
         monkeypatch.setitem(config.raw, "refresh",
-                            {"interval_minutes": 30, "price_change_threshold": 10.0,
+                            {"interval_minutes": interval_minutes, "price_change_threshold": 10.0,
                              "default_timezone": tz,
                              "times": times})
 
     @pytest.mark.asyncio
     async def test_explicit_time_rolls_over_month(self, monkeypatch):
         s = self._scheduler()
-        self._with_times(monkeypatch, ["09:00"])
+        # interval huge so the fixed time is the earliest candidate
+        self._with_times(monkeypatch, ["09:00"], interval_minutes=1440)
         # Aug 31 10:00 UTC -> next trigger must be Sep 1 09:00 (not day=32!)
         now = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
         real_now = datetime.now(timezone.utc)
@@ -260,7 +261,7 @@ class TestNextTriggerCalendarRollover:
     @pytest.mark.asyncio
     async def test_explicit_time_future_today(self, monkeypatch):
         s = self._scheduler()
-        self._with_times(monkeypatch, ["09:00"])
+        self._with_times(monkeypatch, ["09:00"], interval_minutes=1440)
         now = datetime(2026, 8, 31, 7, 0, tzinfo=timezone.utc)
 
         class _Frozen(datetime):
@@ -296,10 +297,12 @@ class TestTimezoneAwareTimes:
         import scheduler as sched_mod
         monkeypatch.setattr(sched_mod, "datetime", _Frozen)
 
-    def _with_times(self, monkeypatch, times, tz="local"):
+    def _with_times(self, monkeypatch, times, tz="local", interval_minutes=1440):
+        # interval default huge: these tests target the FIXED-time logic,
+        # not the interval candidate (which is always in the min() now)
         from config import config
         monkeypatch.setitem(config.raw, "refresh",
-                            {"interval_minutes": 30, "price_change_threshold": 10.0,
+                            {"interval_minutes": interval_minutes, "price_change_threshold": 10.0,
                              "default_timezone": tz,
                              "times": times})
 
@@ -331,10 +334,21 @@ class TestTimezoneAwareTimes:
     @pytest.mark.asyncio
     async def test_no_times_falls_back_to_interval(self, monkeypatch):
         s = self._scheduler()
-        self._with_times(monkeypatch, [], tz="UTC")
+        self._with_times(monkeypatch, [], tz="UTC", interval_minutes=30)
         self._freeze(monkeypatch, datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc))
         trig = await s._wait_for_next_trigger()
         assert trig == datetime(2026, 8, 31, 8, 30, tzinfo=timezone.utc), trig
+
+    @pytest.mark.asyncio
+    async def test_interval_fires_alongside_fixed_times(self, monkeypatch):
+        """IN ADDITION semantics (2026-08-31): with fixed times present, the
+        periodic interval is still the earliest candidate when it comes first."""
+        s = self._scheduler()
+        self._with_times(monkeypatch, ["23:59"], tz="UTC", interval_minutes=30)
+        self._freeze(monkeypatch, datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc))
+        trig = await s._wait_for_next_trigger()
+        # interval candidate 10:30 beats the fixed 23:59 — it MUST fire
+        assert trig == datetime(2026, 8, 31, 10, 30, tzinfo=timezone.utc), trig
 
 
 if __name__ == "__main__":
