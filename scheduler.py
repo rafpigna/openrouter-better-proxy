@@ -297,6 +297,19 @@ class RefreshScheduler:
         # Build endpoint lookup for quick access
         endpoints_by_tag = {ep["tag"]: ep for ep in cache_data.get("endpoints", [])}
 
+        # AUTHORIZED TARGETS ONLY (fix 2026-09-15; incident 2026-09-10):
+        # the old scan ran over the WHOLE OpenRouter catalog and pinned the
+        # session to whatever endpoint minimized N* — including providers the
+        # user never configured (e.g. deepinfra/fp4 for z-ai/glm-5.3-flash,
+        # which no request could ever use because the router's allowlist gate
+        # rejects it: the pin was at best useless, at worst misleading).
+        # Migration may now target ONLY the endpoints the request-time router
+        # would authorize RIGHT NOW — the very same allowlist + max_price +
+        # backoff gates (single source of truth: router.select_candidates).
+        # Rule (user): NEVER steer a session to a provider that isn't an
+        # authorized candidate; an honest error beats a silent bad migration.
+        authorized_slugs = {slug for slug, _ in self.router.select_candidates(model_id)}
+
         # Get all active sessions
         active_sessions = self.sessions.get_all_sessions()
         if not active_sessions:
@@ -321,23 +334,41 @@ class RefreshScheduler:
                     logger.warning(f"Cannot find endpoint for {changed_provider}")
                     continue
 
-                # Find best alternative (exclude current provider)
+                # Find best alternative (exclude current provider), restricted
+                # to AUTHORIZED candidates. Catalog-only candidates are
+                # tracked for observability but NEVER a migration target.
                 best_alternative = None
                 best_n_star = float("inf")
+                best_unauthorized = None
+                best_unauthorized_n = float("inf")
 
                 for ep in cache_data.get("endpoints", []):
                     alt_tag = ep.get("tag")
                     if alt_tag == changed_provider:
                         continue
 
-                    # Calculate N* for this alternative
                     n_star = self.price_migration.calculate_n_star(current_ep, ep)
+
+                    if alt_tag not in authorized_slugs:
+                        if n_star < best_unauthorized_n:
+                            best_unauthorized_n = n_star
+                            best_unauthorized = ep
+                        continue
+
                     if n_star < best_n_star:
                         best_n_star = n_star
                         best_alternative = ep
 
                 if not best_alternative:
-                    logger.debug(f"No alternative provider found for {changed_provider}")
+                    if best_unauthorized is not None:
+                        logger.warning(
+                            f"No AUTHORIZED alternative for {model_id} session {session_id}: "
+                            f"best catalog candidate {best_unauthorized.get('tag', '?')} "
+                            f"(N*={best_unauthorized_n:.2f}) is not in allowlist / over "
+                            f"max_price / in cooldown — session stays on {changed_provider}"
+                        )
+                    else:
+                        logger.debug(f"No alternative provider found for {changed_provider}")
                     continue
 
                 # Decide whether to migrate
